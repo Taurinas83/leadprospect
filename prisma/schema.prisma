@@ -10,19 +10,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("member") // "manager" or "member"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leads     Lead[]
+}
+
 model Lead {
   id          String   @id @default(cuid())
   name        String
-  company     String
+  company     String   @default("")
   email       String?
   phone       String?
+  whatsapp    String?
   website     String?
+  instagram   String?
+  linkedin    String?
   address     String?
   niche       String?
+  leadType    String   @default("pessoa_juridica") // "pessoa_juridica" or "pessoa_fisica"
   status      String   @default("novo")
   source      String?  @default("manual")
   score       Int      @default(0)
   notes       String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -32,6 +49,7 @@ model SearchHistory {
   query       String
   niche       String?
   location    String?
+  leadType    String?
   results     Int      @default(0)
   createdAt   DateTime @default(now())
 }

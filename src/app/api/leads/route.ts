@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const niche = searchParams.get('niche')
     const search = searchParams.get('search')
+    const userId = searchParams.get('userId')
+    const leadType = searchParams.get('leadType')
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '50', 10)
 
@@ -28,6 +30,14 @@ export async function GET(request: NextRequest) {
 
     if (niche) {
       where.niche = niche.toLowerCase()
+    }
+
+    if (leadType) {
+      where.leadType = leadType
+    }
+
+    if (userId) {
+      where.userId = userId
     }
 
     if (search) {
@@ -69,28 +79,68 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const { name, company, email, phone, website, address, niche, status, source, score, notes } = body
+    const {
+      name,
+      company,
+      email,
+      phone,
+      whatsapp,
+      website,
+      instagram,
+      linkedin,
+      address,
+      niche,
+      leadType,
+      status,
+      source,
+      score,
+      notes,
+      userId,
+    } = body
 
-    if (!name || !company) {
+    if (!name) {
       return NextResponse.json(
-        { error: 'Name and company are required' },
+        { error: 'Name is required' },
         { status: 400 }
       )
+    }
+
+    // For pessoa_juridica, company is required; for pessoa_fisica, it's optional
+    const effectiveLeadType = leadType || 'pessoa_juridica'
+    if (effectiveLeadType === 'pessoa_juridica' && !company) {
+      return NextResponse.json(
+        { error: 'Company is required for Pessoa Jurídica' },
+        { status: 400 }
+      )
+    }
+
+    // If no userId provided, use a default (first manager)
+    let effectiveUserId = userId
+    if (!effectiveUserId) {
+      const defaultManager = await db.user.findFirst({
+        where: { role: 'manager' },
+      })
+      effectiveUserId = defaultManager?.id || ''
     }
 
     const lead = await db.lead.create({
       data: {
         name,
-        company,
+        company: company || '',
         email: email || null,
         phone: phone || null,
+        whatsapp: whatsapp || null,
         website: website || null,
+        instagram: instagram || null,
+        linkedin: linkedin || null,
         address: address || null,
         niche: niche ? niche.toLowerCase() : null,
+        leadType: effectiveLeadType,
         status: status ? status.toLowerCase() : 'novo',
         source: source ? source.toLowerCase() : 'manual',
         score: score ?? 0,
         notes: notes || null,
+        userId: effectiveUserId,
       },
     })
 
@@ -134,7 +184,11 @@ export async function PATCH(request: NextRequest) {
 
     // Only include fields that are provided, normalize status/niche to lowercase
     const data: Record<string, unknown> = {}
-    const allowedFields = ['name', 'company', 'email', 'phone', 'website', 'address', 'niche', 'status', 'source', 'score', 'notes']
+    const allowedFields = [
+      'name', 'company', 'email', 'phone', 'whatsapp', 'website',
+      'instagram', 'linkedin', 'address', 'niche', 'leadType',
+      'status', 'source', 'score', 'notes',
+    ]
 
     for (const field of allowedFields) {
       if (field in fieldsToUpdate) {

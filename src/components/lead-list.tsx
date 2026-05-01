@@ -11,6 +11,9 @@ import {
   Eye,
   Building2,
   Users,
+  AtSign,
+  Linkedin,
+  MessageCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,10 +49,14 @@ interface Lead {
   company: string
   email: string
   phone: string
+  whatsapp: string
   website: string
+  instagram: string
+  linkedin: string
   address: string
   niche: string
   status: string
+  leadType: string
   score: number
   source: string
   notes: string
@@ -87,6 +94,11 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   Perdido: 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300',
 }
 
+const LEAD_TYPE_BADGE_CLASS: Record<string, string> = {
+  pessoa_juridica: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
+  pessoa_fisica: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+}
+
 function getScoreBadge(score: number) {
   if (score >= 80) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300'
   if (score >= 60) return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
@@ -112,7 +124,7 @@ function ListSkeleton() {
   )
 }
 
-export default function LeadList() {
+export default function LeadList({ userId }: { userId?: string }) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [nicheFilter, setNicheFilter] = useState('Todos')
@@ -120,13 +132,16 @@ export default function LeadList() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
+  const queryKey = userId ? ['leads', { userId }] : ['leads']
+
   const { data: leads = [], isLoading } = useQuery<Lead[]>({
-    queryKey: ['leads'],
+    queryKey,
     queryFn: async () => {
       const params = new URLSearchParams()
       if (statusFilter && statusFilter !== 'Todos') params.set('status', statusFilter)
       if (nicheFilter && nicheFilter !== 'Todos') params.set('niche', nicheFilter)
       if (search) params.set('search', search)
+      if (userId) params.set('userId', userId)
       const res = await fetch(`/api/leads?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch leads')
       return res.json()
@@ -251,9 +266,11 @@ export default function LeadList() {
                     <TableRow>
                       <TableHead>Nome</TableHead>
                       <TableHead>Empresa</TableHead>
+                      <TableHead className="hidden md:table-cell">Tipo</TableHead>
                       <TableHead className="hidden md:table-cell">Nicho</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Score</TableHead>
+                      <TableHead className="hidden lg:table-cell">Social</TableHead>
                       <TableHead className="hidden lg:table-cell">Fonte</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
@@ -273,7 +290,15 @@ export default function LeadList() {
                             <span className="text-sm font-medium">{lead.name}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm">{lead.company}</TableCell>
+                        <TableCell className="text-sm">{lead.company || '—'}</TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ${LEAD_TYPE_BADGE_CLASS[lead.leadType] || ''}`}
+                          >
+                            {lead.leadType === 'pessoa_fisica' ? 'PF' : 'PJ'}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <Badge variant="outline" className="text-xs">
                             {lead.niche}
@@ -291,6 +316,22 @@ export default function LeadList() {
                           <Badge variant="secondary" className={getScoreBadge(lead.score)}>
                             {lead.score}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <div className="flex items-center gap-1">
+                            {lead.instagram && (
+                              <AtSign className="size-3.5" style={{ color: '#E4405F' }} />
+                            )}
+                            {lead.linkedin && (
+                              <Linkedin className="size-3.5" style={{ color: '#0A66C2' }} />
+                            )}
+                            {lead.whatsapp && (
+                              <MessageCircle className="size-3.5" style={{ color: '#25D366' }} />
+                            )}
+                            {!lead.instagram && !lead.linkedin && !lead.whatsapp && (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
                           {lead.source || '—'}

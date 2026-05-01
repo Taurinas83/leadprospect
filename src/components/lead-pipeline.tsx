@@ -32,10 +32,14 @@ interface Lead {
   company: string
   email: string
   phone: string
+  whatsapp: string
   website: string
+  instagram: string
+  linkedin: string
   address: string
   niche: string
   status: string
+  leadType: string
   score: number
   source: string
   notes: string
@@ -51,6 +55,11 @@ const PIPELINE_STATUSES = [
   { key: 'Fechado', label: 'Fechado', color: '#10b981', bgClass: 'bg-emerald-50 dark:bg-emerald-950/40', badgeClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' },
   { key: 'Perdido', label: 'Perdido', color: '#f43f5e', bgClass: 'bg-rose-50 dark:bg-rose-950/40', badgeClass: 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300' },
 ]
+
+const LEAD_TYPE_BADGE: Record<string, string> = {
+  pessoa_juridica: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
+  pessoa_fisica: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+}
 
 function getScoreColor(score: number): string {
   if (score >= 80) return 'text-emerald-600'
@@ -73,6 +82,8 @@ function LeadCard({
   lead: Lead
   onClick: (lead: Lead) => void
 }) {
+  const isPF = lead.leadType === 'pessoa_fisica'
+
   return (
     <Card
       className="cursor-pointer border shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
@@ -83,17 +94,23 @@ function LeadCard({
           <GripVertical className="mt-0.5 size-4 shrink-0 text-muted-foreground/40" />
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-1">
-              <p className="truncate text-sm font-medium">{lead.company}</p>
+              <p className="truncate text-sm font-medium">{isPF ? lead.name : lead.company}</p>
               <div
                 className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white ${getScoreBg(lead.score)}`}
               >
                 {lead.score}
               </div>
             </div>
-            <p className="truncate text-xs text-muted-foreground">{lead.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{isPF ? lead.company || lead.name : lead.name}</p>
             <div className="mt-2 flex items-center gap-1.5">
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                 {lead.niche}
+              </Badge>
+              <Badge
+                variant="secondary"
+                className={`text-[10px] px-1.5 py-0 ${LEAD_TYPE_BADGE[lead.leadType] || ''}`}
+              >
+                {isPF ? 'PF' : 'PJ'}
               </Badge>
             </div>
           </div>
@@ -178,16 +195,20 @@ function PipelineSkeleton() {
   )
 }
 
-export default function LeadPipeline() {
+export default function LeadPipeline({ userId }: { userId?: string }) {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
+  const queryKey = userId ? ['leads', { userId }] : ['leads']
+
   const { data: leads = [], isLoading } = useQuery<Lead[]>({
-    queryKey: ['leads'],
+    queryKey,
     queryFn: async () => {
-      const res = await fetch('/api/leads')
+      const params = new URLSearchParams()
+      if (userId) params.set('userId', userId)
+      const res = await fetch(`/api/leads?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch leads')
       return res.json()
     },

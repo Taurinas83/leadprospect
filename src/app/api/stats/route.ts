@@ -1,15 +1,31 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+// Helper to capitalize first letter
+function capitalize(str: string | null): string | null {
+  if (!str) return str
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
 
 // GET /api/stats - Get pipeline statistics
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const userId = searchParams.get('userId')
+
+    // Build where clause
+    const where: Record<string, unknown> = {}
+    if (userId) {
+      where.userId = userId
+    }
+
     // Get total leads count
-    const totalLeads = await db.lead.count()
+    const totalLeads = await db.lead.count({ where })
 
     // Get leads grouped by status
     const leadsByStatusRaw = await db.lead.groupBy({
       by: ['status'],
+      where,
       _count: {
         status: true,
       },
@@ -24,6 +40,7 @@ export async function GET() {
     // Get leads grouped by niche
     const leadsByNicheRaw = await db.lead.groupBy({
       by: ['niche'],
+      where,
       _count: {
         niche: true,
       },
@@ -34,9 +51,22 @@ export async function GET() {
       count: item._count.niche,
     }))
 
+    // Get leads grouped by type (PJ vs PF)
+    // Use raw query to avoid Prisma client caching issues with new fields
+    const pjResult = await db.$queryRaw`SELECT COUNT(*) as count FROM Lead WHERE leadType = 'pessoa_juridica'` as { count: number }[]
+    const pfResult = await db.$queryRaw`SELECT COUNT(*) as count FROM Lead WHERE leadType = 'pessoa_fisica'` as { count: number }[]
+    const pjCount = Number(pjResult[0]?.count || 0)
+    const pfCount = Number(pfResult[0]?.count || 0)
+
+    const leadsByType = [
+      { leadType: 'Pessoa Jurídica', key: 'pessoa_juridica', count: pjCount },
+      { leadType: 'Pessoa Física', key: 'pessoa_fisica', count: pfCount },
+    ].filter((item) => item.count > 0)
+
     // Get leads grouped by source
     const leadsBySourceRaw = await db.lead.groupBy({
       by: ['source'],
+      where,
       _count: {
         source: true,
       },
@@ -50,6 +80,7 @@ export async function GET() {
 
     // Get recent leads (last 5) - capitalize status
     const recentLeadsRaw = await db.lead.findMany({
+      where,
       take: 5,
       orderBy: { createdAt: 'desc' },
     })
@@ -70,6 +101,7 @@ export async function GET() {
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
     const newThisWeek = await db.lead.count({
       where: {
+        ...where,
         createdAt: {
           gte: oneWeekAgo,
         },
@@ -79,6 +111,7 @@ export async function GET() {
     // Pipeline value (mock: based on qualified + proposta leads)
     const pipelineLeads = await db.lead.count({
       where: {
+        ...where,
         status: { in: ['qualificado', 'proposta'] },
       },
     })
@@ -91,6 +124,7 @@ export async function GET() {
       pipelineValue,
       leadsByStatus,
       leadsByNiche,
+      leadsByType,
       bySource,
       recentLeads,
     })

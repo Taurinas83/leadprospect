@@ -69,3 +69,72 @@ Stage Summary:
 - Polished header with gradient icon and branding
 - 10 sample leads seeded with Brazilian business data
 - All lint checks pass with zero errors
+
+---
+Task ID: 2-a
+Agent: Subagent (backend-developer)
+Task: Create NextAuth.js auth config and update API routes with new fields
+
+Work Log:
+- Created /src/lib/auth.ts with NextAuth.js v4 Credentials provider configuration
+  - Simple password comparison (no bcrypt) for MVP
+  - JWT strategy with id and role in token/session callbacks
+  - Custom sign-in page at /login
+- Created /src/app/api/auth/[...nextauth]/route.ts with NextAuth route handler (GET + POST)
+- Created /src/app/api/auth/session/route.ts - Session API that returns user from DB
+- Updated /src/app/api/leads/route.ts:
+  - GET: Added userId query param support for filtering leads by user
+  - POST: Now accepts whatsapp, instagram, linkedin, leadType, userId fields; company defaults to "" (optional); userId is required
+  - PATCH: Added whatsapp, instagram, linkedin, leadType to allowedFields; leadType normalized to lowercase
+  - DELETE: No changes (already working)
+  - All responses include leadType field
+- Updated /src/app/api/search/route.ts:
+  - Accepts leadType param ("pessoa_fisica" or "pessoa_juridica")
+  - pessoa_fisica: appends "linkedin instagram whatsapp contato" keywords
+  - pessoa_juridica: appends "telefone contato site linkedin instagram" keywords
+  - Enhanced search results with social media link extraction (instagram.com, linkedin.com/in|company, wa.me, +55 phone numbers)
+  - Returns EnhancedSearchResult[] with name, url, snippet, host_name, plus optional instagram/linkedin/whatsapp
+  - Saves leadType to SearchHistory
+- Updated /src/app/api/stats/route.ts:
+  - Accepts userId query parameter to filter all queries
+  - Added byLeadType grouping in response
+  - recentLeads now includes whatsapp, instagram, linkedin, leadType fields
+  - All count queries respect userId filter when provided
+
+Stage Summary:
+- 3 new files created (auth.ts, auth route handler, session API)
+- 3 existing files updated (leads, search, stats routes)
+- NextAuth v4 configured with Credentials provider and JWT strategy
+- All API routes support new Lead model fields (whatsapp, instagram, linkedin, leadType, userId)
+- Search extracts social media links from results
+- Stats supports per-user filtering and leadType grouping
+- Lint passes with zero errors
+
+---
+Task ID: 3
+Agent: Main
+Task: Update frontend with auth, social fields, lead type, user filtering
+
+Work Log:
+- Updated Prisma schema with User model (id, name, email, password, role), Lead model now has userId, whatsapp, instagram, linkedin, leadType
+- Seeded 3 users: ricardo@leadprospect.com (manager), ana@leadprospect.com (member), bruno@leadprospect.com (member)
+- Seeded 10 leads with social media links and leadType, distributed across users
+- Updated providers.tsx with SessionProvider from next-auth/react
+- Updated page.tsx with auth-aware layout: shows LoginPage when not authenticated, main app when logged in
+- Header now shows user name + role badge (Gestor/Membro) + logout button
+- Managers get "Ver todos" toggle switch to see all leads or just their own
+- Members always see only their own leads
+- Updated lead-detail-modal.tsx with: leadType selector (PJ/PF), WhatsApp/Instagram/LinkedIn input fields with icons, PF badge, company optional for PF
+- Updated lead-search.tsx with: leadType selector (PJ/PF), social media icon display in results, social fields in add-lead dialog, userId passed to API
+- Updated lead-pipeline.tsx with: userId prop, leadType badge (PF/PJ) on cards, social media fields in Lead interface
+- Updated lead-list.tsx with: userId prop, leadType column, social media icons column
+- Updated lead-dashboard.tsx with: userId prop for stats filtering
+
+Stage Summary:
+- Full auth system with NextAuth.js v4 (credentials provider, JWT strategy)
+- Role-based access: managers see all leads, members see only their own
+- New Lead fields: whatsapp, instagram, linkedin, leadType (pessoa_fisica/pessoa_juridica)
+- Search now finds both individuals (PF) and companies (PJ)
+- Search extracts and returns Instagram, LinkedIn, WhatsApp links
+- 3 demo accounts with login credentials shown on login page
+- All lint checks pass with zero errors

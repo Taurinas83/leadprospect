@@ -3,7 +3,10 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Search, Plus, Globe, Building2, MapPin, Loader2 } from 'lucide-react'
+import {
+  Search, Plus, Globe, Building2, MapPin, Loader2,
+  User, Briefcase, Instagram, Linkedin, MessageCircle,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +49,9 @@ interface SearchResult {
   snippet: string
   niche: string
   location?: string
+  instagram?: string
+  linkedin?: string
+  whatsapp?: string
 }
 
 const NICHE_OPTIONS = [
@@ -55,6 +61,10 @@ const NICHE_OPTIONS = [
   'Loja',
   'Salão',
   'Oficina',
+  'Consultoria',
+  'Nutricionista',
+  'Personal Trainer',
+  'Artesanato',
   'Outro',
 ]
 
@@ -81,10 +91,11 @@ function SearchSkeleton() {
   )
 }
 
-export default function LeadSearch() {
+export default function LeadSearch({ userId }: { userId: string }) {
   const [query, setQuery] = useState('')
   const [niche, setNiche] = useState('')
   const [location, setLocation] = useState('')
+  const [leadType, setLeadType] = useState('pessoa_juridica')
   const [results, setResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
@@ -92,11 +103,15 @@ export default function LeadSearch() {
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null)
   const [leadName, setLeadName] = useState('')
   const [leadCompany, setLeadCompany] = useState('')
+  const [leadWhatsapp, setLeadWhatsapp] = useState('')
+  const [leadInstagram, setLeadInstagram] = useState('')
+  const [leadLinkedin, setLeadLinkedin] = useState('')
 
   const queryClient = useQueryClient()
+  const isPF = leadType === 'pessoa_fisica'
 
   const searchMutation = useMutation({
-    mutationFn: async (params: { query: string; niche: string; location: string }) => {
+    mutationFn: async (params: { query: string; niche: string; location: string; leadType: string }) => {
       const res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -104,15 +119,19 @@ export default function LeadSearch() {
       })
       if (!res.ok) throw new Error('Search failed')
       const data = await res.json()
-      // API returns { results: [...], searchId: string }
       const rawResults = data.results || []
-      // Map search results to our SearchResult format
-      return rawResults.map((r: { name?: string; url?: string; snippet?: string; host_name?: string }) => ({
+      return rawResults.map((r: {
+        name?: string; url?: string; snippet?: string; host_name?: string;
+        instagram?: string; linkedin?: string; whatsapp?: string;
+      }) => ({
         name: r.name || 'Unknown',
         website: r.url || '',
         snippet: r.snippet || '',
         niche: params.niche || 'Outro',
         location: params.location || '',
+        instagram: r.instagram || '',
+        linkedin: r.linkedin || '',
+        whatsapp: r.whatsapp || '',
       })) as SearchResult[]
     },
     onMutate: () => {
@@ -131,17 +150,7 @@ export default function LeadSearch() {
   })
 
   const addLeadMutation = useMutation({
-    mutationFn: async (data: {
-      name: string
-      company: string
-      email: string
-      phone: string
-      website: string
-      niche: string
-      source: string
-      status: string
-      score: number
-    }) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -168,13 +177,16 @@ export default function LeadSearch() {
       toast.error('Digite um termo para buscar')
       return
     }
-    searchMutation.mutate({ query, niche, location })
+    searchMutation.mutate({ query, niche, location, leadType })
   }
 
   const handleAddLead = (result: SearchResult) => {
     setSelectedResult(result)
     setLeadName(result.name)
-    setLeadCompany(result.name)
+    setLeadCompany(isPF ? '' : result.name)
+    setLeadWhatsapp(result.whatsapp || '')
+    setLeadInstagram(result.instagram || '')
+    setLeadLinkedin(result.linkedin || '')
     setAddDialogOpen(true)
   }
 
@@ -182,14 +194,19 @@ export default function LeadSearch() {
     if (!selectedResult) return
     addLeadMutation.mutate({
       name: leadName,
-      company: leadCompany,
+      company: leadCompany || (isPF ? '' : selectedResult.name),
       email: '',
       phone: '',
+      whatsapp: leadWhatsapp,
       website: selectedResult.website,
+      instagram: leadInstagram,
+      linkedin: leadLinkedin,
       niche: selectedResult.niche || niche || 'Outro',
+      leadType,
       source: 'Busca',
       status: 'Novo',
       score: 50,
+      userId,
     })
   }
 
@@ -208,21 +225,41 @@ export default function LeadSearch() {
             Buscar Leads
           </CardTitle>
           <CardDescription>
-            Encontre novos prospectos por segmento e localização
+            Encontre prospectos por segmento, localização e tipo
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSearch} className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1.5">
+          <form onSubmit={handleSearch} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:flex-wrap">
+            <div className="flex-1 space-y-1.5 min-w-[200px]">
               <label className="text-sm font-medium">Busca</label>
               <Input
-                placeholder="Ex: restaurantes italianos, clínicas odontológicas..."
+                placeholder={isPF ? 'Ex: nutricionista, personal trainer, consultor...' : 'Ex: restaurantes italianos, clínicas odontológicas...'}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="w-full"
               />
             </div>
-            <div className="w-full space-y-1.5 sm:w-44">
+            <div className="w-full space-y-1.5 sm:w-40">
+              <label className="text-sm font-medium">Tipo</label>
+              <Select value={leadType} onValueChange={setLeadType}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pessoa_juridica">
+                    <span className="flex items-center gap-1.5">
+                      <Briefcase className="size-3" /> PJ - Empresa
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="pessoa_fisica">
+                    <span className="flex items-center gap-1.5">
+                      <User className="size-3" /> PF - Pessoa
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full space-y-1.5 sm:w-40">
               <label className="text-sm font-medium">Nicho</label>
               <Select value={niche} onValueChange={setNiche}>
                 <SelectTrigger className="w-full">
@@ -237,7 +274,7 @@ export default function LeadSearch() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="w-full space-y-1.5 sm:w-44">
+            <div className="w-full space-y-1.5 sm:w-36">
               <label className="text-sm font-medium">Localização</label>
               <Input
                 placeholder="Ex: São Paulo"
@@ -296,12 +333,13 @@ export default function LeadSearch() {
               </p>
             </div>
           ) : (
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-[420px] overflow-y-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Website</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead className="hidden md:table-cell">Website</TableHead>
+                    <TableHead className="hidden lg:table-cell">Redes Sociais</TableHead>
                     <TableHead className="hidden md:table-cell">Descrição</TableHead>
                     <TableHead className="text-right">Ação</TableHead>
                   </TableRow>
@@ -319,19 +357,24 @@ export default function LeadSearch() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <div className="flex size-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-                            <Building2 className="size-4" />
+                            {isPF ? <User className="size-4" /> : <Building2 className="size-4" />}
                           </div>
                           <div>
                             <p className="text-sm font-medium">{result.name}</p>
-                            {result.niche && (
-                              <Badge variant="outline" className="mt-0.5 text-[10px]">
-                                {result.niche}
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <Badge variant="outline" className="text-[10px]">
+                                {isPF ? 'PF' : 'PJ'}
                               </Badge>
-                            )}
+                              {result.niche && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  {result.niche}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         {result.website ? (
                           <a
                             href={result.website}
@@ -340,15 +383,37 @@ export default function LeadSearch() {
                             className="flex items-center gap-1 text-xs text-emerald-600 hover:underline"
                           >
                             <Globe className="size-3" />
-                            {result.website.replace(/^https?:\/\//, '')}
+                            {result.website.replace(/^https?:\/\//, '').slice(0, 30)}
                           </a>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <div className="flex items-center gap-2">
+                          {result.instagram && (
+                            <a href={result.instagram} target="_blank" rel="noopener noreferrer" title="Instagram">
+                              <Instagram className="size-4 text-pink-500 hover:text-pink-600" />
+                            </a>
+                          )}
+                          {result.linkedin && (
+                            <a href={result.linkedin} target="_blank" rel="noopener noreferrer" title="LinkedIn">
+                              <Linkedin className="size-4 text-blue-600 hover:text-blue-700" />
+                            </a>
+                          )}
+                          {result.whatsapp && (
+                            <a href={`https://wa.me/${result.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp">
+                              <MessageCircle className="size-4 text-green-500 hover:text-green-600" />
+                            </a>
+                          )}
+                          {!result.instagram && !result.linkedin && !result.whatsapp && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="hidden max-w-xs truncate md:table-cell">
                         <span className="text-xs text-muted-foreground">
-                          {result.snippet || '—'}
+                          {result.snippet ? result.snippet.slice(0, 80) + '...' : '—'}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
@@ -381,20 +446,56 @@ export default function LeadSearch() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Nome do Contato</label>
-              <Input
-                value={leadName}
-                onChange={(e) => setLeadName(e.target.value)}
-                placeholder="Nome do contato"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Nome do Contato</label>
+                <Input
+                  value={leadName}
+                  onChange={(e) => setLeadName(e.target.value)}
+                  placeholder="Nome do contato"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Empresa {isPF && <span className="text-muted-foreground">(opcional)</span>}
+                </label>
+                <Input
+                  value={leadCompany}
+                  onChange={(e) => setLeadCompany(e.target.value)}
+                  placeholder={isPF ? 'Opcional para PF' : 'Nome da empresa'}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Instagram className="size-3.5 text-pink-500" /> Instagram
+                </label>
+                <Input
+                  value={leadInstagram}
+                  onChange={(e) => setLeadInstagram(e.target.value)}
+                  placeholder="https://instagram.com/..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Linkedin className="size-3.5 text-blue-600" /> LinkedIn
+                </label>
+                <Input
+                  value={leadLinkedin}
+                  onChange={(e) => setLeadLinkedin(e.target.value)}
+                  placeholder="https://linkedin.com/in/..."
+                />
+              </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Empresa</label>
+              <label className="flex items-center gap-1.5 text-sm font-medium">
+                <MessageCircle className="size-3.5 text-green-500" /> WhatsApp
+              </label>
               <Input
-                value={leadCompany}
-                onChange={(e) => setLeadCompany(e.target.value)}
-                placeholder="Nome da empresa"
+                value={leadWhatsapp}
+                onChange={(e) => setLeadWhatsapp(e.target.value)}
+                placeholder="5511999999999"
               />
             </div>
             {selectedResult && (

@@ -8,6 +8,9 @@ import {
   Loader2,
   Calendar,
   Clock,
+  Instagram,
+  Linkedin,
+  MessageCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -50,9 +53,13 @@ interface Lead {
   company: string
   email: string
   phone: string
+  whatsapp: string
   website: string
+  instagram: string
+  linkedin: string
   address: string
   niche: string
+  leadType: string
   status: string
   score: number
   source: string
@@ -77,6 +84,9 @@ const NICHE_OPTIONS = [
   'Loja',
   'Salão',
   'Oficina',
+  'Consultoria',
+  'Nutricionista',
+  'Artesanato',
   'Outro',
 ]
 
@@ -116,13 +126,19 @@ function LeadDetailForm({
     company: lead.company || '',
     email: lead.email || '',
     phone: lead.phone || '',
+    whatsapp: lead.whatsapp || '',
     website: lead.website || '',
+    instagram: lead.instagram || '',
+    linkedin: lead.linkedin || '',
     address: lead.address || '',
     niche: lead.niche || '',
+    leadType: lead.leadType || 'pessoa_juridica',
     status: lead.status || 'Novo',
     score: lead.score ?? 50,
     notes: lead.notes || '',
   })
+
+  const isPF = form.leadType === 'pessoa_fisica'
 
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<Lead> & { id: string }) => {
@@ -169,15 +185,23 @@ function LeadDetailForm({
       toast.error('Nome é obrigatório')
       return
     }
+    if (!isPF && !form.company.trim()) {
+      toast.error('Empresa é obrigatória para Pessoa Jurídica')
+      return
+    }
     updateMutation.mutate({
       id: lead.id,
       name: form.name,
       company: form.company,
       email: form.email,
       phone: form.phone,
+      whatsapp: form.whatsapp,
       website: form.website,
+      instagram: form.instagram,
+      linkedin: form.linkedin,
       address: form.address,
       niche: form.niche,
+      leadType: form.leadType,
       status: form.status,
       score: form.score,
       notes: form.notes,
@@ -193,11 +217,11 @@ function LeadDetailForm({
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
           Detalhes do Lead
-          <Badge
-            variant="secondary"
-            className={STATUS_COLORS[lead.status] || ''}
-          >
+          <Badge variant="secondary" className={STATUS_COLORS[lead.status] || ''}>
             {lead.status}
+          </Badge>
+          <Badge variant="outline" className={isPF ? 'border-teal-300 text-teal-700 dark:text-teal-300' : 'border-slate-300 text-slate-600 dark:text-slate-400'}>
+            {isPF ? 'PF' : 'PJ'}
           </Badge>
         </DialogTitle>
         <DialogDescription>
@@ -206,26 +230,45 @@ function LeadDetailForm({
       </DialogHeader>
 
       <div className="space-y-4">
-        {/* Name & Company */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* Lead Type & Name */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
+            <Label>Tipo</Label>
+            <Select
+              value={form.leadType}
+              onValueChange={(v) => setForm({ ...form, leadType: v })}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pessoa_juridica">Pessoa Jurídica</SelectItem>
+                <SelectItem value="pessoa_fisica">Pessoa Física</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="lead-name">Nome</Label>
             <Input
               id="lead-name"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Nome do contato"
+              placeholder={isPF ? 'Nome da pessoa' : 'Nome do contato'}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="lead-company">Empresa</Label>
-            <Input
-              id="lead-company"
-              value={form.company}
-              onChange={(e) => setForm({ ...form, company: e.target.value })}
-              placeholder="Nome da empresa"
-            />
-          </div>
+        </div>
+
+        {/* Company (optional for PF) */}
+        <div className="space-y-1.5">
+          <Label htmlFor="lead-company">
+            Empresa {isPF && <span className="text-muted-foreground">(opcional)</span>}
+          </Label>
+          <Input
+            id="lead-company"
+            value={form.company}
+            onChange={(e) => setForm({ ...form, company: e.target.value })}
+            placeholder={isPF ? 'Nome da empresa (opcional para PF)' : 'Nome da empresa'}
+          />
         </div>
 
         {/* Email & Phone */}
@@ -251,8 +294,20 @@ function LeadDetailForm({
           </div>
         </div>
 
-        {/* Website & Address */}
+        {/* WhatsApp & Website */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-whatsapp" className="flex items-center gap-1.5">
+              <MessageCircle className="size-3.5 text-green-500" />
+              WhatsApp
+            </Label>
+            <Input
+              id="lead-whatsapp"
+              value={form.whatsapp}
+              onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+              placeholder="5511999999999"
+            />
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="lead-website">Website</Label>
             <Input
@@ -262,15 +317,45 @@ function LeadDetailForm({
               placeholder="https://exemplo.com"
             />
           </div>
+        </div>
+
+        {/* Social Media */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="lead-address">Endereço</Label>
+            <Label htmlFor="lead-instagram" className="flex items-center gap-1.5">
+              <Instagram className="size-3.5 text-pink-500" />
+              Instagram
+            </Label>
             <Input
-              id="lead-address"
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              placeholder="Rua, número - Cidade"
+              id="lead-instagram"
+              value={form.instagram}
+              onChange={(e) => setForm({ ...form, instagram: e.target.value })}
+              placeholder="https://instagram.com/username"
             />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lead-linkedin" className="flex items-center gap-1.5">
+              <Linkedin className="size-3.5 text-blue-600" />
+              LinkedIn
+            </Label>
+            <Input
+              id="lead-linkedin"
+              value={form.linkedin}
+              onChange={(e) => setForm({ ...form, linkedin: e.target.value })}
+              placeholder="https://linkedin.com/in/username"
+            />
+          </div>
+        </div>
+
+        {/* Address */}
+        <div className="space-y-1.5">
+          <Label htmlFor="lead-address">Endereço</Label>
+          <Input
+            id="lead-address"
+            value={form.address}
+            onChange={(e) => setForm({ ...form, address: e.target.value })}
+            placeholder="Rua, número - Cidade"
+          />
         </div>
 
         {/* Niche & Status */}

@@ -8,6 +8,8 @@ import {
   DollarSign,
   Search,
   Columns3,
+  Building2,
+  User,
 } from 'lucide-react'
 import {
   Card,
@@ -40,12 +42,14 @@ interface LeadStats {
   pipelineValue: number
   leadsByStatus: { status: string; count: number }[]
   leadsByNiche: { niche: string; count: number }[]
+  leadsByType: { leadType: string; key: string; count: number }[]
   recentLeads: {
     id: string
     name: string
     company: string
     niche: string
     status: string
+    leadType: string
     score: number
     createdAt: string
   }[]
@@ -70,6 +74,11 @@ const NICHE_COLORS = [
   '#64748b',
 ]
 
+const TYPE_COLORS: Record<string, string> = {
+  pessoa_juridica: '#0ea5e9',
+  pessoa_fisica: '#10b981',
+}
+
 const STATUS_BADGE_CLASS: Record<string, string> = {
   Novo: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   Contatado: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
@@ -77,6 +86,11 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   Proposta: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
   Fechado: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
   Perdido: 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300',
+}
+
+const LEAD_TYPE_BADGE_CLASS: Record<string, string> = {
+  pessoa_juridica: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
+  pessoa_fisica: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
 }
 
 const containerVariants = {
@@ -174,17 +188,25 @@ function DashboardSkeleton() {
   )
 }
 
-export default function LeadDashboard() {
+export default function LeadDashboard({ userId }: { userId?: string }) {
+  const queryKey = userId ? ['stats', { userId }] : ['stats']
+
   const { data: stats, isLoading } = useQuery<LeadStats>({
-    queryKey: ['stats'],
+    queryKey,
     queryFn: async () => {
-      const res = await fetch('/api/stats')
+      const params = new URLSearchParams()
+      if (userId) params.set('userId', userId)
+      const res = await fetch(`/api/stats?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch stats')
       return res.json()
     },
   })
 
   if (isLoading) return <DashboardSkeleton />
+
+  // Calculate PJ/PF counts from leadsByType
+  const pjCount = stats?.leadsByType?.find((t) => t.key === 'pessoa_juridica')?.count || 0
+  const pfCount = stats?.leadsByType?.find((t) => t.key === 'pessoa_fisica')?.count || 0
 
   const metrics = stats
     ? [
@@ -264,6 +286,38 @@ export default function LeadDashboard() {
           <MetricCard key={metric.title} {...metric} />
         ))}
       </div>
+
+      {/* Leads por Tipo */}
+      <motion.div variants={itemVariants}>
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Pessoa Jurídica</p>
+                  <p className="text-2xl font-bold text-sky-600">{pjCount}</p>
+                </div>
+                <div className="flex size-10 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-900/40">
+                  <Building2 className="size-5 text-sky-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Pessoa Física</p>
+                  <p className="text-2xl font-bold text-emerald-600">{pfCount}</p>
+                </div>
+                <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
+                  <User className="size-5 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </motion.div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -388,7 +442,15 @@ export default function LeadDashboard() {
                           {lead.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="text-sm font-medium">{lead.name}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium">{lead.name}</p>
+                            <Badge
+                              variant="secondary"
+                              className={`text-[10px] px-1.5 py-0 ${LEAD_TYPE_BADGE_CLASS[lead.leadType] || ''}`}
+                            >
+                              {lead.leadType === 'pessoa_fisica' ? 'PF' : 'PJ'}
+                            </Badge>
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {lead.company} · {lead.niche}
                           </p>

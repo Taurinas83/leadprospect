@@ -6,7 +6,7 @@ import ZAI, { type SearchFunctionResultItem } from 'z-ai-web-dev-sdk'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { query, niche, location } = body
+    const { query, niche, location, leadType } = body
 
     if (!query) {
       return NextResponse.json(
@@ -23,8 +23,14 @@ export async function POST(request: NextRequest) {
     if (location) {
       searchQuery = `${searchQuery} ${location}`
     }
-    // Append keywords that help find business contact info
-    searchQuery = `${searchQuery} telefone contato site`
+
+    // Adjust search keywords based on lead type
+    const effectiveLeadType = leadType || 'pessoa_juridica'
+    if (effectiveLeadType === 'pessoa_fisica') {
+      searchQuery = `${searchQuery} profissional autônomo contato instagram`
+    } else {
+      searchQuery = `${searchQuery} telefone contato site empresa`
+    }
 
     // Use z-ai-web-dev-sdk for web search
     const zai = await ZAI.create()
@@ -33,18 +39,55 @@ export async function POST(request: NextRequest) {
       num: 15,
     })
 
+    // Extract social media links from search results
+    const enrichedResults = results.map((r) => {
+      const url = r.url || ''
+      const snippet = r.snippet || ''
+      const allText = `${url} ${snippet}`.toLowerCase()
+
+      let instagram = ''
+      let linkedin = ''
+      let whatsapp = ''
+
+      // Extract Instagram
+      const igMatch = allText.match(/instagram\.com\/([a-zA-Z0-9_.]+)/)
+      if (igMatch) {
+        instagram = `https://instagram.com/${igMatch[1]}`
+      }
+
+      // Extract LinkedIn
+      const liMatch = allText.match(/linkedin\.com\/(in|company)\/([a-zA-Z0-9_.-]+)/)
+      if (liMatch) {
+        linkedin = `https://linkedin.com/${liMatch[1]}/${liMatch[2]}`
+      }
+
+      // Extract WhatsApp
+      const waMatch = allText.match(/wa\.me\/(\d+)|whatsapp.*?(\+?\d{10,})/)
+      if (waMatch) {
+        whatsapp = waMatch[1] ? `https://wa.me/${waMatch[1]}` : waMatch[2] || ''
+      }
+
+      return {
+        ...r,
+        instagram,
+        linkedin,
+        whatsapp,
+      }
+    })
+
     // Save search to SearchHistory
     const searchHistory = await db.searchHistory.create({
       data: {
         query,
         niche: niche || null,
         location: location || null,
+        leadType: effectiveLeadType,
         results: results.length,
       },
     })
 
     return NextResponse.json({
-      results,
+      results: enrichedResults,
       searchId: searchHistory.id,
     })
   } catch (error) {
