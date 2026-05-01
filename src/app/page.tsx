@@ -42,7 +42,7 @@ export default function Home() {
     return <LoginPage />
   }
 
-  const user = session.user as { id: string; name: string; email: string; role: string }
+  const user = session.user
   const isManager = user.role === 'manager'
   // Managers can toggle between all leads and their own; members always see only their own
   const filterUserId = isManager && viewAllLeads ? undefined : user.id
