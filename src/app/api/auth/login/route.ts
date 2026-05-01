@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticateUser, createSession } from '@/lib/auth-custom'
+import { authenticateUser, createSessionToken } from '@/lib/auth-custom'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const token = await createSession(user)
+    const token = createSessionToken(user)
 
     const response = NextResponse.json({
       user: {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Set session cookie
     response.cookies.set('leadprospect-session', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24, // 24 hours
       path: '/',

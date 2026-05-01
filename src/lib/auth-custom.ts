@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { cookies } from 'next/headers'
+import * as crypto from 'crypto'
 
 const SESSION_SECRET = process.env.NEXTAUTH_SECRET || 'leadprospect-secret-key-dev'
 
@@ -10,12 +11,10 @@ export interface SessionUser {
   role: string
 }
 
-// Simple base64 token signing (for demo - not production-grade)
+// HMAC-signed token for session management
 function signToken(payload: Record<string, unknown>): string {
   const data = JSON.stringify({ ...payload, iat: Date.now() })
   const encoded = Buffer.from(data).toString('base64url')
-  // Simple signature using HMAC-like approach with Node crypto
-  const crypto = require('crypto')
   const sig = crypto.createHmac('sha256', SESSION_SECRET).update(encoded).digest('base64url')
   return `${encoded}.${sig}`
 }
@@ -25,7 +24,6 @@ function verifyToken(token: string): Record<string, unknown> | null {
     const [payloadEncoded, sig] = token.split('.')
     if (!payloadEncoded || !sig) return null
 
-    const crypto = require('crypto')
     const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(payloadEncoded).digest('base64url')
     if (sig !== expectedSig) return null
 
@@ -41,19 +39,24 @@ function verifyToken(token: string): Record<string, unknown> | null {
 }
 
 export async function authenticateUser(email: string, password: string): Promise<SessionUser | null> {
-  const user = await db.user.findUnique({ where: { email } })
-  if (!user) return null
-  if (user.password !== password) return null
+  try {
+    const user = await db.user.findUnique({ where: { email } })
+    if (!user) return null
+    if (user.password !== password) return null
 
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    }
+  } catch (error) {
+    console.error('Auth error:', error)
+    return null
   }
 }
 
-export function createSession(user: SessionUser): string {
+export function createSessionToken(user: SessionUser): string {
   return signToken({
     id: user.id,
     name: user.name,
