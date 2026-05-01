@@ -1,25 +1,24 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '../[...nextauth]/route'
+import { getSession } from '@/lib/auth-custom'
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
+    const user = await getSession()
 
-    if (!session?.user) {
+    if (!user) {
       return NextResponse.json({ user: null })
     }
 
     return NextResponse.json({
       user: {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        role: session.user.role,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
       },
     })
   } catch (error) {
-    console.error('Error fetching session:', error)
+    console.error('Session error:', error)
     return NextResponse.json({ user: null })
   }
 }

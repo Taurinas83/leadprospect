@@ -1,9 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { useAuth } from '@/lib/auth-client'
 import { Target, Loader2, Mail, Lock, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,7 +13,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
+  const { login } = useAuth()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,16 +23,9 @@ export default function LoginPage() {
     }
     setIsLoading(true)
     try {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      })
-      if (result?.error) {
-        toast.error('Email ou senha inválidos')
-      } else {
-        router.push('/')
-        router.refresh()
+      const result = await login(email, password)
+      if (!result.success) {
+        toast.error(result.error || 'Email ou senha inválidos')
       }
     } catch {
       toast.error('Erro ao fazer login')
@@ -45,12 +36,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-background dark:via-background dark:to-background p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
+      <div className="w-full max-w-md">
         <Card className="border-0 shadow-xl">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg">
@@ -118,7 +104,7 @@ export default function LoginPage() {
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </div>
   )
 }

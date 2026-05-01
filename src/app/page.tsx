@@ -1,6 +1,6 @@
 'use client'
 
-import { useSession, signOut } from 'next-auth/react'
+import { useAuth } from '@/lib/auth-client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -16,18 +16,29 @@ import {
 } from 'lucide-react'
 
 import LoginPage from '@/components/login-page'
-import LeadDashboard from '@/components/lead-dashboard'
-import LeadSearch from '@/components/lead-search'
-import LeadPipeline from '@/components/lead-pipeline'
-import LeadList from '@/components/lead-list'
 import { useState } from 'react'
 import { Label } from '@/components/ui/label'
+import dynamic from 'next/dynamic'
+
+// Dynamic imports for heavy components to reduce initial compilation load
+const LeadDashboard = dynamic(() => import('@/components/lead-dashboard'), {
+  loading: () => <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando dashboard...</div>,
+})
+const LeadSearch = dynamic(() => import('@/components/lead-search'), {
+  loading: () => <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando busca...</div>,
+})
+const LeadPipeline = dynamic(() => import('@/components/lead-pipeline'), {
+  loading: () => <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando pipeline...</div>,
+})
+const LeadList = dynamic(() => import('@/components/lead-list'), {
+  loading: () => <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando lista...</div>,
+})
 
 export default function Home() {
-  const { data: session, status } = useSession()
+  const { user, loading, logout } = useAuth()
   const [viewAllLeads, setViewAllLeads] = useState(true)
 
-  if (status === 'loading') {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex items-center gap-2 text-muted-foreground">
@@ -38,13 +49,11 @@ export default function Home() {
     )
   }
 
-  if (!session?.user) {
+  if (!user) {
     return <LoginPage />
   }
 
-  const user = session.user
   const isManager = user.role === 'manager'
-  // Managers can toggle between all leads and their own; members always see only their own
   const filterUserId = isManager && viewAllLeads ? undefined : user.id
 
   return (
@@ -101,7 +110,7 @@ export default function Home() {
                 </span>
               </div>
               <button
-                onClick={() => signOut({ callbackUrl: '/' })}
+                onClick={logout}
                 className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title="Sair"
               >
