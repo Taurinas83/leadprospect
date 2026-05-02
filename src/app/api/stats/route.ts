@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth, authErrorResponse } from '@/lib/auth-custom'
 
 // Helper to capitalize first letter
 function capitalize(str: string | null): string | null {
@@ -7,16 +8,24 @@ function capitalize(str: string | null): string | null {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
-// GET /api/stats - Get pipeline statistics
+// GET /api/stats - Get pipeline statistics (requires auth)
 export async function GET(request: NextRequest) {
   try {
+    const currentUser = await requireAuth()
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
 
-    // Build where clause
+    // Build where clause - enforce data isolation
     const where: Record<string, unknown> = {}
-    if (userId) {
-      where.userId = userId
+    if (currentUser.role === 'manager') {
+      // Manager can see all or filter by userId
+      if (userId) {
+        where.userId = userId
+      }
+    } else {
+      // Members always see only their own data
+      where.userId = currentUser.id
     }
 
     // Get total leads count
@@ -52,7 +61,6 @@ export async function GET(request: NextRequest) {
     }))
 
     // Get leads grouped by type (PJ vs PF)
-    // Use raw query to avoid Prisma client caching issues with new fields
     const pjResult = await db.$queryRaw`SELECT COUNT(*) as count FROM Lead WHERE leadType = 'pessoa_juridica'` as { count: number }[]
     const pfResult = await db.$queryRaw`SELECT COUNT(*) as count FROM Lead WHERE leadType = 'pessoa_fisica'` as { count: number }[]
     const pjCount = Number(pjResult[0]?.count || 0)
@@ -129,6 +137,9 @@ export async function GET(request: NextRequest) {
       recentLeads,
     })
   } catch (error) {
+    if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
+      return authErrorResponse(error)
+    }
     console.error('Error fetching stats:', error)
     return NextResponse.json(
       { error: 'Failed to fetch statistics' },

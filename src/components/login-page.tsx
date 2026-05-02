@@ -15,6 +15,9 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
 
+  // Only show demo accounts in development
+  const isDev = process.env.NODE_ENV === 'development'
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) {
@@ -94,14 +97,16 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-            <div className="mt-6 rounded-lg bg-muted/50 p-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">Contas de demonstração:</p>
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <p>👤 Gestor: ricardo@leadprospect.com / gestor123</p>
-                <p>👤 Membro: ana@leadprospect.com / membro123</p>
-                <p>👤 Membro: bruno@leadprospect.com / membro123</p>
+            {isDev && (
+              <div className="mt-6 rounded-lg bg-muted/50 p-3">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Contas de demonstração:</p>
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  <p>👤 Gestor: ricardo@leadprospect.com / gestor123</p>
+                  <p>👤 Membro: ana@leadprospect.com / membro123</p>
+                  <p>👤 Membro: bruno@leadprospect.com / membro123</p>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

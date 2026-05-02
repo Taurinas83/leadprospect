@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth, authErrorResponse } from '@/lib/auth-custom'
 
 // Helper to capitalize first letter
 function capitalize(str: string | null): string | null {
@@ -7,9 +8,11 @@ function capitalize(str: string | null): string | null {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
-// GET /api/leads - List leads with filters
+// GET /api/leads - List leads with filters (requires auth)
 export async function GET(request: NextRequest) {
   try {
+    const currentUser = await requireAuth()
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const niche = searchParams.get('niche')
@@ -36,8 +39,15 @@ export async function GET(request: NextRequest) {
       where.leadType = leadType
     }
 
-    if (userId) {
-      where.userId = userId
+    // Enforce data isolation: members can only see their own leads
+    if (currentUser.role === 'manager') {
+      // Manager can see all or filter by specific userId
+      if (userId) {
+        where.userId = userId
+      }
+    } else {
+      // Members can only see their own leads regardless of what they request
+      where.userId = currentUser.id
     }
 
     if (search) {
@@ -66,6 +76,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(normalizedLeads)
   } catch (error) {
+    if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
+      return authErrorResponse(error)
+    }
     console.error('Error fetching leads:', error)
     return NextResponse.json(
       { error: 'Failed to fetch leads' },
@@ -74,9 +87,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/leads - Create a new lead
+// POST /api/leads - Create a new lead (requires auth)
 export async function POST(request: NextRequest) {
   try {
+    const currentUser = await requireAuth()
+
     const body = await request.json()
 
     const {
@@ -114,13 +129,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // If no userId provided, use a default (first manager)
-    let effectiveUserId = userId
-    if (!effectiveUserId) {
-      const defaultManager = await db.user.findFirst({
-        where: { role: 'manager' },
-      })
-      effectiveUserId = defaultManager?.id || ''
+    // Determine the userId for the lead
+    // Members can only create leads for themselves
+    let effectiveUserId = currentUser.id
+    if (currentUser.role === 'manager' && userId) {
+      effectiveUserId = userId
     }
 
     const lead = await db.lead.create({
@@ -152,6 +165,9 @@ export async function POST(request: NextRequest) {
       source: capitalize(lead.source),
     }, { status: 201 })
   } catch (error) {
+    if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
+      return authErrorResponse(error)
+    }
     console.error('Error creating lead:', error)
     return NextResponse.json(
       { error: 'Failed to create lead' },
@@ -160,9 +176,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH /api/leads - Update a lead
+// PATCH /api/leads - Update a lead (requires auth)
 export async function PATCH(request: NextRequest) {
   try {
+    const currentUser = await requireAuth()
+
     const body = await request.json()
     const { id, ...fieldsToUpdate } = body
 
@@ -179,6 +197,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { error: 'Lead not found' },
         { status: 404 }
+      )
+    }
+
+    // Members can only update their own leads
+    if (currentUser.role !== 'manager' && existing.userId !== currentUser.id) {
+      return NextResponse.json(
+        { error: 'Você não tem permissão para editar este lead' },
+        { status: 403 }
       )
     }
 
@@ -214,6 +240,9 @@ export async function PATCH(request: NextRequest) {
       source: capitalize(lead.source),
     })
   } catch (error) {
+    if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
+      return authErrorResponse(error)
+    }
     console.error('Error updating lead:', error)
     return NextResponse.json(
       { error: 'Failed to update lead' },
@@ -222,9 +251,11 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE /api/leads - Delete a lead
+// DELETE /api/leads - Delete a lead (requires auth)
 export async function DELETE(request: NextRequest) {
   try {
+    const currentUser = await requireAuth()
+
     // Support both query param and JSON body
     const { searchParams } = new URL(request.url)
     let id = searchParams.get('id')
@@ -254,10 +285,21 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
+    // Members can only delete their own leads
+    if (currentUser.role !== 'manager' && existing.userId !== currentUser.id) {
+      return NextResponse.json(
+        { error: 'Você não tem permissão para excluir este lead' },
+        { status: 403 }
+      )
+    }
+
     await db.lead.delete({ where: { id } })
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
+      return authErrorResponse(error)
+    }
     console.error('Error deleting lead:', error)
     return NextResponse.json(
       { error: 'Failed to delete lead' },

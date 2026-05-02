@@ -13,6 +13,8 @@ import {
   LogOut,
   Shield,
   User,
+  Users,
+  Settings,
 } from 'lucide-react'
 
 import LoginPage from '@/components/login-page'
@@ -32,6 +34,12 @@ const LeadPipeline = dynamic(() => import('@/components/lead-pipeline'), {
 })
 const LeadList = dynamic(() => import('@/components/lead-list'), {
   loading: () => <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando lista...</div>,
+})
+const UserManagement = dynamic(() => import('@/components/user-management'), {
+  loading: () => <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando usuários...</div>,
+})
+const UserSettings = dynamic(() => import('@/components/user-settings'), {
+  loading: () => <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando configurações...</div>,
 })
 
 export default function Home() {
@@ -141,6 +149,16 @@ export default function Home() {
               <List className="size-4" />
               <span className="hidden sm:inline">Lista</span>
             </TabsTrigger>
+            {isManager && (
+              <TabsTrigger value="users" className="gap-1.5">
+                <Users className="size-4" />
+                <span className="hidden sm:inline">Usuários</span>
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="settings" className="gap-1.5">
+              <Settings className="size-4" />
+              <span className="hidden sm:inline">Config</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard">
@@ -154,6 +172,14 @@ export default function Home() {
           </TabsContent>
           <TabsContent value="list">
             <LeadList userId={filterUserId} />
+          </TabsContent>
+          {isManager && (
+            <TabsContent value="users">
+              <UserManagement />
+            </TabsContent>
+          )}
+          <TabsContent value="settings">
+            <UserSettings />
           </TabsContent>
         </Tabs>
       </main>

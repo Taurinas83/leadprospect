@@ -1,10 +1,13 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth, authErrorResponse } from '@/lib/auth-custom'
 import ZAI, { type SearchFunctionResultItem } from 'z-ai-web-dev-sdk'
 
-// POST /api/search - Search for leads on the web
+// POST /api/search - Search for leads on the web (requires auth)
 export async function POST(request: NextRequest) {
   try {
+    const currentUser = await requireAuth()
+
     const body = await request.json()
     const { query, niche, location, leadType } = body
 
@@ -75,7 +78,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Save search to SearchHistory
+    // Save search to SearchHistory with the user who performed it
     const searchHistory = await db.searchHistory.create({
       data: {
         query,
@@ -91,6 +94,9 @@ export async function POST(request: NextRequest) {
       searchId: searchHistory.id,
     })
   } catch (error) {
+    if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
+      return authErrorResponse(error)
+    }
     console.error('Error searching for leads:', error)
     return NextResponse.json(
       { error: 'Failed to search for leads' },

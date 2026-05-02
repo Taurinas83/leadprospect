@@ -16,6 +16,7 @@ model User {
   email     String   @unique
   password  String
   role      String   @default("member") // "manager" or "member"
+  active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   leads     Lead[]

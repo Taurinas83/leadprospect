@@ -13,7 +13,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const user = await authenticateUser(email, password)
+    let user
+    try {
+      user = await authenticateUser(email, password)
+    } catch (error) {
+      // Handle rate limit and deactivated account errors
+      if (error instanceof Error) {
+        if (error.message.includes('bloqueada')) {
+          return NextResponse.json(
+            { error: error.message },
+            { status: 429 }
+          )
+        }
+        if (error.message.includes('desativada')) {
+          return NextResponse.json(
+            { error: error.message },
+            { status: 403 }
+          )
+        }
+      }
+      throw error
+    }
+
     if (!user) {
       return NextResponse.json(
         { error: 'Email ou senha inválidos' },
@@ -32,11 +53,12 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Set session cookie
+    // Set session cookie - secure in production
+    const isProduction = process.env.NODE_ENV === 'production'
     response.cookies.set('leadprospect-session', token, {
       httpOnly: true,
-      secure: false,
-      sameSite: 'lax',
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
       maxAge: 60 * 60 * 24, // 24 hours
       path: '/',
     })

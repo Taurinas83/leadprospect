@@ -22,3 +22,34 @@ Stage Summary:
 - Fix: double-fork daemon for server persistence + React Context for shared auth state
 - All features working: login, dashboard, search, pipeline, lead list with social media/WhatsApp/PF support
 - Demo accounts verified: ricardo@leadprospect.com/gestor123, ana@leadprospect.com/membro123, bruno@leadprospect.com/membro123
+
+---
+Task ID: 2
+Agent: Main
+Task: Production readiness - security hardening and user management
+
+Work Log:
+- Fixed CRITICAL security bug: plaintext password comparison changed to bcrypt.compare()
+- Added rate limiting on login (5 attempts → 15min lockout)
+- Added requireAuth() and requireManager() server-side auth guards
+- Protected all API routes: /api/leads, /api/stats, /api/search (now require authentication)
+- Enforced data isolation: members can only see/edit their own leads
+- Added `active` field to User model in Prisma schema (soft delete support)
+- Created /api/users route (GET list, POST create - manager only)
+- Created /api/users/[id] route (PATCH update, DELETE deactivate)
+- Created UserManagement component (full CRUD for managers)
+- Created UserSettings component (password change for all users)
+- Added "Usuários" tab (manager only) and "Config" tab (all users) to main page
+- Secured session cookies: secure=true and sameSite=strict in production
+- Removed duplicate auth-client.ts file (keeping only .tsx version)
+- Removed demo account display from login page in production mode
+- Created .env.production template
+- Hashed all existing plaintext passwords in database
+- Rebuilt and verified all changes work
+
+Stage Summary:
+- All critical security vulnerabilities fixed
+- Full user management system implemented
+- Rate limiting protects against brute force
+- Data isolation enforced at API level
+- System ready for production deployment
