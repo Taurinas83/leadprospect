@@ -1,6 +1,11 @@
 import { PrismaClient } from '@prisma/client'
 import { hash } from 'bcryptjs'
 
+// Ensure DATABASE_URL is always set (fallback for cloud deployments without .env)
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'file:./db/custom.db'
+}
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
   dbInitialized: boolean | undefined
@@ -29,6 +34,19 @@ export async function ensureDbInitialized(): Promise<void> {
 }
 
 async function initializeDatabase(): Promise<void> {
+  // Ensure db directory exists for SQLite
+  try {
+    const { existsSync, mkdirSync } = await import('fs')
+    const { join } = await import('path')
+    const dbDir = join(process.cwd(), 'db')
+    if (!existsSync(dbDir)) {
+      mkdirSync(dbDir, { recursive: true })
+      console.log('[DB] Created db directory:', dbDir)
+    }
+  } catch (e) {
+    console.warn('[DB] Could not create db directory:', e)
+  }
+
   try {
     // Check if User table exists by trying a simple query
     await db.$queryRaw`SELECT 1 FROM User LIMIT 1`
