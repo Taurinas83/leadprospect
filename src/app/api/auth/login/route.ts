@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser, createSessionToken } from '@/lib/auth-custom'
+import { ensureDbInitialized } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureDbInitialized()
+
     const body = await request.json()
     const { email, password } = body
 

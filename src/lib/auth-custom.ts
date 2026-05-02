@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, ensureDbInitialized } from '@/lib/db'
 import { cookies } from 'next/headers'
 import * as crypto from 'crypto'
 import { compare } from 'bcryptjs'
@@ -75,6 +75,8 @@ function verifyToken(token: string): Record<string, unknown> | null {
 
 export async function authenticateUser(email: string, password: string): Promise<SessionUser | null> {
   try {
+    await ensureDbInitialized()
+
     // Check rate limit first
     const rateLimit = checkRateLimit(email)
     if (!rateLimit.allowed) {
@@ -129,6 +131,8 @@ export function createSessionToken(user: SessionUser): string {
 
 export async function getSession(): Promise<SessionUser | null> {
   try {
+    await ensureDbInitialized()
+
     const cookieStore = await cookies()
     const token = cookieStore.get('leadprospect-session')?.value
     if (!token) return null

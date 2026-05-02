@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, ensureDbInitialized } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireManager, requireAuth, authErrorResponse } from '@/lib/auth-custom'
 import { hash, compare } from 'bcryptjs'
@@ -9,6 +9,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureDbInitialized()
     const currentUser = await requireAuth()
     const { id } = await params
     const body = await request.json()
@@ -138,6 +139,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureDbInitialized()
     const currentUser = await requireManager()
     const { id } = await params
 

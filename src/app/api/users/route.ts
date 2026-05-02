@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, ensureDbInitialized } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireManager, authErrorResponse } from '@/lib/auth-custom'
 import { hash } from 'bcryptjs'
@@ -6,6 +6,7 @@ import { hash } from 'bcryptjs'
 // GET /api/users - List all users (manager only)
 export async function GET() {
   try {
+    await ensureDbInitialized()
     await requireManager()
 
     const users = await db.user.findMany({
@@ -32,6 +33,7 @@ export async function GET() {
 // POST /api/users - Create a new user (manager only)
 export async function POST(request: NextRequest) {
   try {
+    await ensureDbInitialized()
     await requireManager()
 
     const body = await request.json()

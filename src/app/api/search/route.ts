@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, ensureDbInitialized } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, authErrorResponse } from '@/lib/auth-custom'
 import ZAI, { type SearchFunctionResultItem } from 'z-ai-web-dev-sdk'
@@ -6,6 +6,7 @@ import ZAI, { type SearchFunctionResultItem } from 'z-ai-web-dev-sdk'
 // POST /api/search - Search for leads on the web (requires auth)
 export async function POST(request: NextRequest) {
   try {
+    await ensureDbInitialized()
     const currentUser = await requireAuth()
 
     const body = await request.json()

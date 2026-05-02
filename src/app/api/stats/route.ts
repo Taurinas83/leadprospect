@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, ensureDbInitialized } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, authErrorResponse } from '@/lib/auth-custom'
 
@@ -11,6 +11,7 @@ function capitalize(str: string | null): string | null {
 // GET /api/stats - Get pipeline statistics (requires auth)
 export async function GET(request: NextRequest) {
   try {
+    await ensureDbInitialized()
     const currentUser = await requireAuth()
 
     const { searchParams } = new URL(request.url)
