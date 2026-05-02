@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "( ( node server.js >> server.log 2>&1 & ) && sleep 2 && echo 'Server started' )",
-    "build": "prisma generate && next build",
-    "start": "node server.js",
+    "build": "mkdir -p db && prisma generate && next build",
+    "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
