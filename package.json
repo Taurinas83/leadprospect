@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "( ( node server.js >> server.log 2>&1 & ) && sleep 2 && echo 'Server started' )",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "node server.js",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
