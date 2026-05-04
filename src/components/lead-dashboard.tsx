@@ -10,6 +10,8 @@ import {
   Columns3,
   Building2,
   User,
+  Trophy,
+  Medal,
 } from 'lucide-react'
 import {
   Card,
@@ -20,6 +22,14 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart,
@@ -51,7 +61,20 @@ interface LeadStats {
     status: string
     leadType: string
     score: number
+    userName: string | null
     createdAt: string
+  }[]
+  teamRanking: {
+    userId: string
+    userName: string
+    totalLeads: number
+    newLeads: number
+    contacted: number
+    qualified: number
+    proposal: number
+    closed: number
+    lost: number
+    conversionRate: number
   }[]
 }
 
@@ -188,7 +211,7 @@ function DashboardSkeleton() {
   )
 }
 
-export default function LeadDashboard({ userId }: { userId?: string }) {
+export default function LeadDashboard({ userId, isManager }: { userId?: string; isManager?: boolean }) {
   const queryKey = userId ? ['stats', { userId }] : ['stats']
 
   const { data: stats, isLoading } = useQuery<LeadStats>({
@@ -409,6 +432,98 @@ export default function LeadDashboard({ userId }: { userId?: string }) {
         </motion.div>
       </div>
 
+      {/* Team Ranking - Only for managers viewing all leads */}
+      {isManager && !userId && (stats?.teamRanking ?? []).length > 0 && (
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Trophy className="size-5 text-amber-500" />
+                Ranking da Equipe
+              </CardTitle>
+              <CardDescription>Performance de prospecção por membro da equipe</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">#</TableHead>
+                      <TableHead>Membro</TableHead>
+                      <TableHead className="text-center">Total</TableHead>
+                      <TableHead className="text-center hidden sm:table-cell">Novos</TableHead>
+                      <TableHead className="text-center hidden sm:table-cell">Contatados</TableHead>
+                      <TableHead className="text-center hidden md:table-cell">Qualificados</TableHead>
+                      <TableHead className="text-center hidden md:table-cell">Propostas</TableHead>
+                      <TableHead className="text-center">Fechados</TableHead>
+                      <TableHead className="text-center hidden sm:table-cell">Conversão</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(stats?.teamRanking ?? []).map((member, index) => (
+                      <TableRow key={member.userId}>
+                        <TableCell>
+                          {index === 0 ? (
+                            <div className="flex size-7 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
+                              <Medal className="size-4 text-amber-600" />
+                            </div>
+                          ) : index === 1 ? (
+                            <div className="flex size-7 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700">
+                              <Medal className="size-4 text-slate-500" />
+                            </div>
+                          ) : index === 2 ? (
+                            <div className="flex size-7 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/40">
+                              <Medal className="size-4 text-orange-600" />
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground pl-2">{index + 1}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="flex size-7 items-center justify-center rounded-full bg-emerald-100 text-xs font-medium text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                              {member.userName.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-sm font-medium">{member.userName}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="secondary" className="font-bold">
+                            {member.totalLeads}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center hidden sm:table-cell text-sm text-muted-foreground">
+                          {member.newLeads}
+                        </TableCell>
+                        <TableCell className="text-center hidden sm:table-cell text-sm text-muted-foreground">
+                          {member.contacted}
+                        </TableCell>
+                        <TableCell className="text-center hidden md:table-cell text-sm text-muted-foreground">
+                          {member.qualified}
+                        </TableCell>
+                        <TableCell className="text-center hidden md:table-cell text-sm text-muted-foreground">
+                          {member.proposal}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="secondary" className={member.closed > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' : ''}>
+                            {member.closed}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center hidden sm:table-cell">
+                          <span className={`text-sm font-medium ${member.conversionRate >= 20 ? 'text-emerald-600' : member.conversionRate >= 10 ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                            {member.conversionRate}%
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Recent Leads */}
       <motion.div variants={itemVariants}>
         <Card>
@@ -452,7 +567,7 @@ export default function LeadDashboard({ userId }: { userId?: string }) {
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {lead.company} · {lead.niche}
+                            {lead.company} · {lead.niche}{lead.userName ? ` · por ${lead.userName}` : ''}
                           </p>
                         </div>
                       </div>

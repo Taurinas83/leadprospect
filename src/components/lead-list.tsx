@@ -60,6 +60,7 @@ interface Lead {
   score: number
   source: string
   notes: string
+  userName: string | null
   createdAt: string
   updatedAt: string
 }
@@ -124,7 +125,7 @@ function ListSkeleton() {
   )
 }
 
-export default function LeadList({ userId }: { userId?: string }) {
+export default function LeadList({ userId, isManager, viewAll }: { userId?: string; isManager?: boolean; viewAll?: boolean }) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [nicheFilter, setNicheFilter] = useState('Todos')
@@ -266,6 +267,7 @@ export default function LeadList({ userId }: { userId?: string }) {
                     <TableRow>
                       <TableHead>Nome</TableHead>
                       <TableHead>Empresa</TableHead>
+                      {isManager && viewAll && <TableHead className="hidden md:table-cell">Prospectador</TableHead>}
                       <TableHead className="hidden md:table-cell">Tipo</TableHead>
                       <TableHead className="hidden md:table-cell">Nicho</TableHead>
                       <TableHead>Status</TableHead>
@@ -291,6 +293,11 @@ export default function LeadList({ userId }: { userId?: string }) {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">{lead.company || '—'}</TableCell>
+                        {isManager && viewAll && (
+                          <TableCell className="hidden md:table-cell">
+                            <span className="text-xs text-muted-foreground">{lead.userName || '—'}</span>
+                          </TableCell>
+                        )}
                         <TableCell className="hidden md:table-cell">
                           <Badge
                             variant="secondary"

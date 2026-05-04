@@ -43,6 +43,7 @@ interface Lead {
   score: number
   source: string
   notes: string
+  userName: string | null
   createdAt: string
   updatedAt: string
 }
@@ -78,9 +79,11 @@ function getScoreBg(score: number): string {
 function LeadCard({
   lead,
   onClick,
+  showProspector,
 }: {
   lead: Lead
   onClick: (lead: Lead) => void
+  showProspector?: boolean
 }) {
   const isPF = lead.leadType === 'pessoa_fisica'
 
@@ -102,6 +105,9 @@ function LeadCard({
               </div>
             </div>
             <p className="truncate text-xs text-muted-foreground">{isPF ? lead.company || lead.name : lead.name}</p>
+            {showProspector && lead.userName && (
+              <p className="truncate text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">por {lead.userName}</p>
+            )}
             <div className="mt-2 flex items-center gap-1.5">
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                 {lead.niche}
@@ -124,10 +130,12 @@ function PipelineColumn({
   status,
   leads,
   onLeadClick,
+  showProspector,
 }: {
   status: (typeof PIPELINE_STATUSES)[number]
   leads: Lead[]
   onLeadClick: (lead: Lead) => void
+  showProspector?: boolean
 }) {
   return (
     <div className="flex w-72 shrink-0 flex-col rounded-xl border bg-muted/30">
@@ -152,7 +160,7 @@ function PipelineColumn({
           strategy={horizontalListSortingStrategy}
         >
           {leads.map((lead) => (
-            <LeadCard key={lead.id} lead={lead} onClick={onLeadClick} />
+            <LeadCard key={lead.id} lead={lead} onClick={onLeadClick} showProspector={showProspector} />
           ))}
         </SortableContext>
         {leads.length === 0 && (
@@ -195,7 +203,7 @@ function PipelineSkeleton() {
   )
 }
 
-export default function LeadPipeline({ userId }: { userId?: string }) {
+export default function LeadPipeline({ userId, isManager, viewAll }: { userId?: string; isManager?: boolean; viewAll?: boolean }) {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -308,6 +316,7 @@ export default function LeadPipeline({ userId }: { userId?: string }) {
                 status={status}
                 leads={columnLeads}
                 onLeadClick={handleLeadClick}
+                showProspector={isManager && viewAll}
               />
             ))}
           </div>

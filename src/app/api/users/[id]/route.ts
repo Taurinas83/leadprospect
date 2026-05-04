@@ -133,7 +133,7 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/users/[id] - Delete/deactivate a user (manager only)
+// DELETE /api/users/[id] - Delete a user (manager only)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -158,8 +158,22 @@ export async function DELETE(
       )
     }
 
-    // Soft delete: deactivate instead of actually deleting
-    // This preserves data integrity (leads reference the user)
+    // Check query param for permanent delete
+    const { searchParams } = new URL(request.url)
+    const permanent = searchParams.get('permanent') === 'true'
+
+    if (permanent) {
+      // Reassign leads to the requesting manager before deleting user
+      await db.lead.updateMany({
+        where: { userId: id },
+        data: { userId: currentUser.id },
+      })
+      // Permanently delete the user
+      await db.user.delete({ where: { id } })
+      return NextResponse.json({ success: true, message: 'Usuário excluído permanentemente. Leads foram transferidos para você.' })
+    }
+
+    // Default: soft delete (deactivate)
     await db.user.update({
       where: { id },
       data: { active: false },

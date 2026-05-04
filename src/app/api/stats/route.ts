@@ -61,15 +61,13 @@ export async function GET(request: NextRequest) {
       count: item._count.niche,
     }))
 
-    // Get leads grouped by type (PJ vs PF)
-    const pjResult = await db.$queryRaw`SELECT COUNT(*) as count FROM Lead WHERE leadType = 'pessoa_juridica'` as { count: number }[]
-    const pfResult = await db.$queryRaw`SELECT COUNT(*) as count FROM Lead WHERE leadType = 'pessoa_fisica'` as { count: number }[]
-    const pjCount = Number(pjResult[0]?.count || 0)
-    const pfCount = Number(pfResult[0]?.count || 0)
+    // Get leads grouped by type (PJ vs PF) - with proper where clause
+    const pjResult = await db.lead.count({ where: { ...where, leadType: 'pessoa_juridica' } })
+    const pfResult = await db.lead.count({ where: { ...where, leadType: 'pessoa_fisica' } })
 
     const leadsByType = [
-      { leadType: 'Pessoa Jurídica', key: 'pessoa_juridica', count: pjCount },
-      { leadType: 'Pessoa Física', key: 'pessoa_fisica', count: pfCount },
+      { leadType: 'Pessoa Jurídica', key: 'pessoa_juridica', count: pjResult },
+      { leadType: 'Pessoa Física', key: 'pessoa_fisica', count: pfResult },
     ].filter((item) => item.count > 0)
 
     // Get leads grouped by source
@@ -87,15 +85,22 @@ export async function GET(request: NextRequest) {
       bySource[key] = item._count.source
     }
 
-    // Get recent leads (last 5) - capitalize status
+    // Get recent leads (last 5) - capitalize status, include user name
     const recentLeadsRaw = await db.lead.findMany({
       where,
       take: 5,
       orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: { name: true },
+        },
+      },
     })
 
     const recentLeads = recentLeadsRaw.map((lead) => ({
       ...lead,
+      userName: lead.user?.name || null,
+      user: undefined,
       status: lead.status.charAt(0).toUpperCase() + lead.status.slice(1),
       niche: lead.niche ? lead.niche.charAt(0).toUpperCase() + lead.niche.slice(1) : null,
       source: lead.source ? lead.source.charAt(0).toUpperCase() + lead.source.slice(1) : null,
@@ -126,6 +131,45 @@ export async function GET(request: NextRequest) {
     })
     const pipelineValue = pipelineLeads * 2500 // Average deal value in BRL
 
+    // Team ranking: only for managers viewing all leads
+    let teamRanking: { userId: string; userName: string; totalLeads: number; newLeads: number; contacted: number; qualified: number; proposal: number; closed: number; lost: number; conversionRate: number }[] = []
+    if (currentUser.role === 'manager' && !userId) {
+      const activeUsers = await db.user.findMany({
+        where: { active: true },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      })
+
+      teamRanking = await Promise.all(
+        activeUsers.map(async (u) => {
+          const userTotal = await db.lead.count({ where: { userId: u.id } })
+          const userNew = await db.lead.count({ where: { userId: u.id, status: 'novo' } })
+          const userContacted = await db.lead.count({ where: { userId: u.id, status: 'contatado' } })
+          const userQualified = await db.lead.count({ where: { userId: u.id, status: 'qualificado' } })
+          const userProposal = await db.lead.count({ where: { userId: u.id, status: 'proposta' } })
+          const userClosed = await db.lead.count({ where: { userId: u.id, status: 'fechado' } })
+          const userLost = await db.lead.count({ where: { userId: u.id, status: 'perdido' } })
+          const userConversion = userTotal > 0 ? Math.round((userClosed / userTotal) * 10000) / 100 : 0
+
+          return {
+            userId: u.id,
+            userName: u.name,
+            totalLeads: userTotal,
+            newLeads: userNew,
+            contacted: userContacted,
+            qualified: userQualified,
+            proposal: userProposal,
+            closed: userClosed,
+            lost: userLost,
+            conversionRate: userConversion,
+          }
+        })
+      )
+
+      // Sort by total leads descending
+      teamRanking.sort((a, b) => b.totalLeads - a.totalLeads)
+    }
+
     return NextResponse.json({
       totalLeads,
       newThisWeek,
@@ -136,6 +180,7 @@ export async function GET(request: NextRequest) {
       leadsByType,
       bySource,
       recentLeads,
+      teamRanking,
     })
   } catch (error) {
     if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {

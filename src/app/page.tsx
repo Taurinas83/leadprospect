@@ -162,16 +162,16 @@ export default function Home() {
           </TabsList>
 
           <TabsContent value="dashboard">
-            <LeadDashboard userId={filterUserId} />
+            <LeadDashboard userId={filterUserId} isManager={isManager} />
           </TabsContent>
           <TabsContent value="search">
             <LeadSearch userId={user.id} />
           </TabsContent>
           <TabsContent value="pipeline">
-            <LeadPipeline userId={filterUserId} />
+            <LeadPipeline userId={filterUserId} isManager={isManager} viewAll={isManager && viewAllLeads} />
           </TabsContent>
           <TabsContent value="list">
-            <LeadList userId={filterUserId} />
+            <LeadList userId={filterUserId} isManager={isManager} viewAll={isManager && viewAllLeads} />
           </TabsContent>
           {isManager && (
             <TabsContent value="users">

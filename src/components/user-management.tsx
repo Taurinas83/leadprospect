@@ -56,6 +56,7 @@ import {
   User,
   Lock,
   Search,
+  Trash2,
 } from 'lucide-react'
 
 interface UserRow {
@@ -84,6 +85,7 @@ export default function UserManagement() {
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false)
   const [changeOwnPasswordDialogOpen, setChangeOwnPasswordDialogOpen] = useState(false)
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // Selected user for actions
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null)
@@ -683,6 +685,18 @@ export default function UserManagement() {
                               </>
                             )}
                           </Button>
+                          {!u.active && u.id !== currentUser?.id && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setSelectedUser(u); setDeleteDialogOpen(true) }}
+                              className="h-8 gap-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                              title="Excluir permanentemente"
+                            >
+                              <Trash2 className="size-3.5" />
+                              <span className="hidden sm:inline">Excluir</span>
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1089,6 +1103,56 @@ export default function UserManagement() {
                 'Desativar'
               ) : (
                 'Ativar'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ===== Permanent Delete Confirmation Dialog ===== */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="size-5 text-red-500" />
+              Excluir Permanentemente
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir <span className="font-semibold text-foreground">{selectedUser?.name}</span> permanentemente?
+              Esta ação não pode ser desfeita. Os leads deste usuário serão transferidos para você.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!selectedUser) return
+                setSubmitting(true)
+                try {
+                  const res = await fetch(`/api/users/${selectedUser.id}?permanent=true`, {
+                    method: 'DELETE',
+                  })
+                  const data = await res.json()
+                  if (!res.ok) throw new Error(data.error || 'Erro ao excluir usuário')
+                  toast.success(data.message || 'Usuário excluído permanentemente!')
+                  setDeleteDialogOpen(false)
+                  fetchUsers()
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'Erro ao excluir usuário')
+                } finally {
+                  setSubmitting(false)
+                }
+              }}
+              disabled={submitting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                'Excluir Permanentemente'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

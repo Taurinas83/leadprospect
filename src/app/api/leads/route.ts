@@ -63,11 +63,18 @@ export async function GET(request: NextRequest) {
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: { name: true },
+        },
+      },
     })
 
-    // Capitalize status and niche in response
+    // Capitalize status and niche in response, flatten userName
     const normalizedLeads = leads.map((lead) => ({
       ...lead,
+      userName: lead.user?.name || null,
+      user: undefined,
       status: capitalize(lead.status) || lead.status,
       niche: capitalize(lead.niche),
       source: capitalize(lead.source),
@@ -159,9 +166,16 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Get user name for the response
+    const leadUser = await db.user.findUnique({
+      where: { id: effectiveUserId },
+      select: { name: true },
+    })
+
     // Return with capitalized values
     return NextResponse.json({
       ...lead,
+      userName: leadUser?.name || null,
       status: capitalize(lead.status) || lead.status,
       niche: capitalize(lead.niche),
       source: capitalize(lead.source),
