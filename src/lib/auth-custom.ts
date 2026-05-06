@@ -208,8 +208,6 @@ export function createSessionToken(user: SessionUser): string {
 
 export async function getSession(): Promise<SessionUser | null> {
   try {
-    await ensureDbInitialized()
-
     const cookieStore = await cookies()
     const token = cookieStore.get('leadprospect-session')?.value
     if (!token) return null
@@ -217,16 +215,39 @@ export async function getSession(): Promise<SessionUser | null> {
     const payload = verifyToken(token)
     if (!payload) return null
 
-    // Verify user still exists and is active in database
-    const user = await db.user.findUnique({ where: { id: payload.id as string } })
-    if (!user) return null
-    if ('active' in user && !user.active) return null
+    // Check if this is an env user (starts with 'env-user-')
+    const userId = payload.id as string
+    if (userId.startsWith('env-user-')) {
+      // Return the user from the token payload directly for env users
+      return {
+        id: userId,
+        name: payload.name as string,
+        email: payload.email as string,
+        role: payload.role as string,
+      }
+    }
 
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
+    // For database users, verify they still exist and are active
+    try {
+      await ensureDbInitialized()
+      const user = await db.user.findUnique({ where: { id: userId } })
+      if (!user) return null
+      if ('active' in user && !user.active) return null
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      }
+    } catch {
+      // If database fails but we have a valid token, return the payload
+      return {
+        id: userId,
+        name: payload.name as string,
+        email: payload.email as string,
+        role: payload.role as string,
+      }
     }
   } catch {
     return null
