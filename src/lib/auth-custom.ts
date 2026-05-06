@@ -1,9 +1,60 @@
 import { db, ensureDbInitialized } from '@/lib/db'
 import { cookies } from 'next/headers'
 import * as crypto from 'crypto'
-import { compare } from 'bcryptjs'
+import { compare, hash } from 'bcryptjs'
 
 const SESSION_SECRET = process.env.SESSION_SECRET || process.env.NEXTAUTH_SECRET || 'leadprospect-secret-key-dev'
+
+// Fallback users via environment variables (for Vercel deployment without external DB)
+interface EnvUser {
+  id: string
+  name: string
+  email: string
+  password: string
+  role: string
+}
+
+function getEnvUsers(): EnvUser[] {
+  const envUsers = process.env.APP_USERS
+  if (!envUsers) return []
+
+  try {
+    return JSON.parse(envUsers)
+  } catch {
+    console.error('[Auth] Failed to parse APP_USERS env variable')
+    return []
+  }
+}
+
+async function hashPassword(password: string): Promise<string> {
+  return hash(password, 10)
+}
+
+// Default fallback users with pre-hashed passwords
+// Passwords: gestor123, membro123, membro123
+const DEFAULT_USERS: EnvUser[] = [
+  {
+    id: 'env-user-1',
+    name: 'Ricardo Silva',
+    email: 'ricardo@leadprospect.com',
+    password: '$2b$10$2nuZ8h1DXt871vw1Hj0ty.LCLKgMPoTuiU7Z4PNiTgabwyQc.P.Eu', // gestor123
+    role: 'manager',
+  },
+  {
+    id: 'env-user-2',
+    name: 'Ana Santos',
+    email: 'ana@leadprospect.com',
+    password: '$2b$10$OvjRWbkee1kkIeeXX.Si7OUZYp/Zr33osPDoPDwmbhTyVqxy8z09q', // membro123
+    role: 'member',
+  },
+  {
+    id: 'env-user-3',
+    name: 'Bruno Oliveira',
+    email: 'bruno@leadprospect.com',
+    password: '$2b$10$OvjRWbkee1kkIeeXX.Si7OUZYp/Zr33osPDoPDwmbhTyVqxy8z09q', // membro123
+    role: 'member',
+  },
+]
 
 // Rate limiting: track failed login attempts
 const failedAttempts = new Map<string, { count: number; lockedUntil: number }>()
@@ -75,28 +126,54 @@ function verifyToken(token: string): Record<string, unknown> | null {
 
 export async function authenticateUser(email: string, password: string): Promise<SessionUser | null> {
   try {
-    await ensureDbInitialized()
+    // Try database first
+    try {
+      await ensureDbInitialized()
+      const rateLimit = checkRateLimit(email)
+      if (!rateLimit.allowed) {
+        const minutes = Math.ceil((rateLimit.retryAfterMs || 0) / 60000)
+        throw new Error(`Conta temporariamente bloqueada. Tente novamente em ${minutes} minutos.`)
+      }
 
-    // Check rate limit first
-    const rateLimit = checkRateLimit(email)
-    if (!rateLimit.allowed) {
-      const minutes = Math.ceil((rateLimit.retryAfterMs || 0) / 60000)
-      throw new Error(`Conta temporariamente bloqueada. Tente novamente em ${minutes} minutos.`)
+      const user = await db.user.findUnique({ where: { email } })
+      if (user) {
+        // Check if user is active
+        if ('active' in user && !user.active) {
+          throw new Error('Conta desativada. Entre em contato com o administrador.')
+        }
+
+        // Use bcrypt comparison
+        const passwordMatch = await compare(password, user.password)
+        if (!passwordMatch) {
+          recordFailedAttempt(email)
+          return null
+        }
+
+        clearFailedAttempts(email)
+
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        }
+      }
+    } catch (dbError) {
+      // If database fails, fall back to env users
+      console.log('[Auth] Database unavailable, using env users')
     }
 
-    const user = await db.user.findUnique({ where: { email } })
-    if (!user) {
+    // Fallback to environment users
+    const envUsers = getEnvUsers().length > 0 ? getEnvUsers() : DEFAULT_USERS
+    const envUser = envUsers.find(u => u.email === email)
+
+    if (!envUser) {
       recordFailedAttempt(email)
       return null
     }
 
-    // Check if user is active
-    if ('active' in user && !user.active) {
-      throw new Error('Conta desativada. Entre em contato com o administrador.')
-    }
-
-    // Use bcrypt comparison instead of plaintext
-    const passwordMatch = await compare(password, user.password)
+    // Compare password with env user
+    const passwordMatch = await compare(password, envUser.password)
     if (!passwordMatch) {
       recordFailedAttempt(email)
       return null
@@ -105,14 +182,14 @@ export async function authenticateUser(email: string, password: string): Promise
     clearFailedAttempts(email)
 
     return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
+      id: envUser.id,
+      name: envUser.name,
+      email: envUser.email,
+      role: envUser.role,
     }
   } catch (error) {
     // Re-throw known error messages (like rate limit and deactivated)
-    if (error instanceof Error && error.message.includes('bloqueada') || error instanceof Error && error.message.includes('desativada')) {
+    if (error instanceof Error && (error.message.includes('bloqueada') || error.message.includes('desativada'))) {
       throw error
     }
     console.error('Auth error:', error)
