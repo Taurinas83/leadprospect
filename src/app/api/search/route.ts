@@ -136,20 +136,27 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Save search to SearchHistory
-    const searchHistory = await db.searchHistory.create({
-      data: {
-        query,
-        niche: niche || null,
-        location: location || null,
-        leadType: effectiveLeadType,
-        results: results.length,
-      },
-    })
+    // Save search to SearchHistory (optional - skip if DB unavailable)
+    let searchId = null
+    try {
+      await ensureDbInitialized()
+      const searchHistory = await db.searchHistory.create({
+        data: {
+          query,
+          niche: niche || null,
+          location: location || null,
+          leadType: effectiveLeadType,
+          results: results.length,
+        },
+      })
+      searchId = searchHistory.id
+    } catch (dbError) {
+      console.log('[Search] Could not save search history:', dbError)
+    }
 
     return NextResponse.json({
       results: enrichedResults,
-      searchId: searchHistory.id,
+      searchId,
     })
   } catch (error) {
     if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
