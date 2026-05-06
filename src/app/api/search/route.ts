@@ -1,20 +1,19 @@
 import { db, ensureDbInitialized } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, authErrorResponse } from '@/lib/auth-custom'
-import ZAI, { type SearchFunctionResultItem } from 'z-ai-web-dev-sdk'
 
 // POST /api/search - Search for leads on the web (requires auth)
 export async function POST(request: NextRequest) {
   try {
     await ensureDbInitialized()
-    const currentUser = await requireAuth()
+    await requireAuth() // Valida se o usuário está logado
 
     const body = await request.json()
     const { query, niche, location, leadType } = body
 
     if (!query) {
       return NextResponse.json(
-        { error: 'Query is required' },
+        { error: 'A busca (query) é obrigatória' },
         { status: 400 }
       )
     }
@@ -36,12 +35,39 @@ export async function POST(request: NextRequest) {
       searchQuery = `${searchQuery} telefone contato site empresa`
     }
 
-    // Use z-ai-web-dev-sdk for web search
-    const zai = await ZAI.create()
-    const results: SearchFunctionResultItem[] = await zai.functions.invoke('web_search', {
-      query: searchQuery,
-      num: 15,
-    })
+    let results: any[] = []
+    const serpApiKey = process.env.SERPAPI_KEY
+
+    if (serpApiKey) {
+      const params = new URLSearchParams({
+        engine: 'google',
+        q: searchQuery,
+        api_key: serpApiKey,
+        num: '15'
+      })
+      
+      const res = await fetch(`https://serpapi.com/search.json?${params}`)
+      if (!res.ok) {
+        throw new Error('Falha na API do SerpAPI')
+      }
+      
+      const data = await res.json()
+      if (data.organic_results) {
+        results = data.organic_results.map((r: any) => ({
+          name: r.title || 'Desconhecido',
+          url: r.link || '',
+          snippet: r.snippet || '',
+        }))
+      }
+    } else {
+      // Mocked Fallback se a SERPAPI_KEY não estiver configurada no Vercel
+      console.warn('SERPAPI_KEY ausente. Usando resultados de fallback.')
+      results = [
+        { name: 'Empresa Exemplo 1', url: 'https://exemplo1.com', snippet: 'Clínica especializada na região. Contato: (11) 99999-1111 - Instagram: instagram.com/exemplo1' },
+        { name: 'Profissional Teste 2', url: 'https://exemplo2.com', snippet: 'Consultoria empresarial e de negócios. linkedin.com/in/exemplo2 WhatsApp: 5511988882222' },
+        { name: 'Negócio Local 3', url: '', snippet: 'Restaurante e delivery. Faça seu pedido: instagram.com/negocio3' }
+      ]
+    }
 
     // Extract social media links from search results
     const enrichedResults = results.map((r) => {
@@ -79,7 +105,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Save search to SearchHistory with the user who performed it
+    // Save search to SearchHistory
     const searchHistory = await db.searchHistory.create({
       data: {
         query,
