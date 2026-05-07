@@ -1,11 +1,185 @@
-import { db, ensureDbInitialized } from '@/lib/db'
+import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, authErrorResponse } from '@/lib/auth-custom'
 
-// POST /api/search - Search for leads on the web (requires auth)
+interface SearchResult {
+  name: string
+  url: string
+  snippet: string
+  instagram?: string
+  linkedin?: string
+  whatsapp?: string
+  phone?: string
+  email?: string
+}
+
+async function searchDuckDuckGo(query: string): Promise<SearchResult[]> {
+  const results: SearchResult[] = []
+  
+  try {
+    // Method 1: DuckDuckGo HTML interface
+    const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=br-pt`
+    const res = await fetch(htmlUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Referer': 'https://duckduckgo.com/',
+      },
+      cache: 'no-store',
+    })
+
+    if (res.ok) {
+      const html = await res.text()
+      
+      // Extract actual result links from DuckDuckGo HTML
+      // DuckDuckGo uses: <a class="result__a" href="/l/?kh=-1&uddg=ACTUAL_URL">
+      const linkRegex = /<a class="result__a" href="\/l\/\?[^"]*uddg=([^"&]+)[^"]*"[^>]*>(.*?)<\/a>/gs
+      const snippetRegex = /<a class="result__snippet[^"]*"[^>]*>(.*?)<\/a>/gs
+      
+      let match
+      const snippets: string[] = []
+      
+      // First collect all snippets
+      let snipMatch
+      while ((snipMatch = snippetRegex.exec(html)) !== null) {
+        snippets.push(snipMatch[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim())
+      }
+      
+      let idx = 0
+      while ((match = linkRegex.exec(html)) !== null) {
+        const encodedUrl = match[1]
+        const title = match[2].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim()
+        
+        // Decode URL
+        let url = decodeURIComponent(encodedUrl)
+        if (!url.startsWith('http')) url = 'https://' + url
+        
+        const snippet = snippets[idx] || ''
+        idx++
+        
+        results.push({
+          name: title || new URL(url).hostname,
+          url,
+          snippet,
+        })
+        
+        if (results.length >= 15) break
+      }
+    }
+  } catch (e) {
+    console.error('DuckDuckGo HTML failed:', e)
+  }
+
+  // Method 2: DuckDuckGo Lite (fallback)
+  if (results.length === 0) {
+    try {
+      const params = new URLSearchParams({ q: query, kl: 'br-pt' })
+      const res = await fetch('https://lite.duckduckgo.com/lite/', {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'text/html',
+        },
+        body: params.toString(),
+        cache: 'no-store',
+      })
+
+      if (res.ok) {
+        const html = await res.text()
+        // Lite version uses: <a class="result-link" href="URL">
+        const liteRegex = /<a class="result-link" href="([^"]+)"[^>]*>(.*?)<\/a>/gs
+        const liteSnippetRegex = /<td class="result-snippet"[^>]*>(.*?)<\/td>/gs
+        
+        const snippets: string[] = []
+        let snipMatch
+        while ((snipMatch = liteSnippetRegex.exec(html)) !== null) {
+          snippets.push(snipMatch[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim())
+        }
+        
+        let match
+        let idx = 0
+        while ((match = liteRegex.exec(html)) !== null) {
+          let url = match[1].replace(/&amp;/g, '&')
+          if (url.startsWith('//')) url = 'https:' + url
+          const title = match[2].replace(/<[^>]+>/g, '').trim()
+          
+          results.push({
+            name: title || new URL(url).hostname,
+            url,
+            snippet: snippets[idx] || '',
+          })
+          idx++
+          
+          if (results.length >= 15) break
+        }
+      }
+    } catch (e) {
+      console.error('DuckDuckGo Lite failed:', e)
+    }
+  }
+
+  return results
+}
+
+function extractSocialLinks(result: SearchResult): SearchResult {
+  const url = result.url || ''
+  const snippet = result.snippet || ''
+  const name = result.name || ''
+  const allText = `${url} ${snippet} ${name}`.toLowerCase()
+
+  // Extract Instagram
+  const igMatch = allText.match(/(?:instagram\.com|instagr\.am)\/([a-zA-Z0-9_.]+)/)
+  if (igMatch) {
+    result.instagram = `https://instagram.com/${igMatch[1]}`
+  }
+
+  // Extract LinkedIn
+  const liMatch = allText.match(/linkedin\.com\/(in|company)\/([a-zA-Z0-9_.-]+)/)
+  if (liMatch) {
+    result.linkedin = `https://linkedin.com/${liMatch[1]}/${liMatch[2]}`
+  }
+
+  // Extract WhatsApp
+  const waMatch = allText.match(/wa\.me\/(\d+)|whatsapp\.com\/.*?(\+?\d{10,})/)
+  if (waMatch) {
+    result.whatsapp = waMatch[1] ? `https://wa.me/${waMatch[1]}` : waMatch[2]
+  }
+
+  // Extract phone numbers (Brazilian format)
+  const phoneMatch = allText.match(/(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}[-.]?\d{4}/)
+  if (phoneMatch) {
+    result.phone = phoneMatch[0]
+  }
+
+  // Extract email
+  const emailMatch = allText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+  if (emailMatch) {
+    result.email = emailMatch[0]
+  }
+
+  // Try to get Instagram from URL hostname
+  if (!result.instagram) {
+    const hostMatch = url.match(/instagram\.com\/([a-zA-Z0-9_.]+)/)
+    if (hostMatch) {
+      result.instagram = url
+    }
+  }
+
+  // Try to get LinkedIn from URL hostname
+  if (!result.linkedin) {
+    const hostMatch = url.match(/linkedin\.com\/(in|company)\/([a-zA-Z0-9_.-]+)/)
+    if (hostMatch) {
+      result.linkedin = url
+    }
+  }
+
+  return result
+}
+
 export async function POST(request: NextRequest) {
   try {
-    await ensureDbInitialized()
     await requireAuth()
 
     const body = await request.json()
@@ -18,165 +192,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Construct a search query optimized for finding business leads
+    // Build search query
     let searchQuery = query
-    if (niche) {
-      searchQuery = `${niche} ${searchQuery}`
-    }
-    if (location) {
-      searchQuery = `${searchQuery} ${location}`
-    }
+    if (niche && niche !== 'todos') searchQuery = `${niche} ${searchQuery}`
+    if (location) searchQuery = `${searchQuery} ${location}`
+    
+    // Add business contact keywords
+    searchQuery = `${searchQuery} contato telefone site`
 
-    // Adjust search keywords based on lead type
-    const effectiveLeadType = leadType || 'pessoa_juridica'
-    if (effectiveLeadType === 'pessoa_fisica') {
-      searchQuery = `${searchQuery} profissional autônomo contato instagram`
-    } else {
-      searchQuery = `${searchQuery} telefone contato site empresa`
-    }
+    console.log(`[Search] Query: "${searchQuery}"`)
 
-    let results: any[] = []
+    // Perform real web search
+    let results = await searchDuckDuckGo(searchQuery)
+    
+    console.log(`[Search] Found ${results.length} results`)
 
-    // Search engine 1: DuckDuckGo HTML (more reliable for server-side)
-    try {
-      console.log('Searching via DuckDuckGo HTML...')
-      const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}&kl=br-pt`
-      const ddgRes = await fetch(ddgUrl, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-        },
-        cache: 'no-store',
-      })
-
-      if (ddgRes.ok) {
-        const html = await ddgRes.text()
-        // Parse DuckDuckGo HTML results
-        const resultRegex = /<a class="result__a" href="([^"]+)"[^>]*>(.*?)<\/a>/gs
-        const snippetRegex = /<a class="result__snippet[^>]*>(.*?)<\/a>/gs
-        let match
-        while ((match = resultRegex.exec(html)) !== null) {
-          let url = match[1]
-          // DuckDuckGo uses redirect URLs, extract the actual URL
-          const u = new URL(url, 'https://html.duckduckgo.com')
-          const actualUrl = u.searchParams.get('uddg') || url
-          const title = match[2].replace(/<[^>]+>/g, '').trim()
-          
-          // Find corresponding snippet
-          let snippet = ''
-          const snippetMatch = snippetRegex.exec(html)
-          if (snippetMatch) {
-            snippet = snippetMatch[1].replace(/<[^>]+>/g, '').trim()
-          }
-          
-          results.push({ 
-            name: title || actualUrl.replace(/^https?:\/\//, '').split('/')[0], 
-            url: actualUrl.startsWith('http') ? actualUrl : `https://${actualUrl}`, 
-            snippet 
-          })
-          
-          if (results.length >= 10) break
-        }
-      }
-    } catch (e) {
-      console.error('DuckDuckGo HTML Search Failed:', e)
-    }
-
-    // Search engine 2: SearXNG (multiple instances)
+    // If DuckDuckGo returns nothing, try alternative approaches
     if (results.length === 0) {
-      const searxInstances = [
-        'https://searx.be',
-        'https://search.bus-hit.me',
-        'https://searx.tiekoetter.com',
-      ]
-      
-      for (const instance of searxInstances) {
-        try {
-          console.log(`Trying SearXNG instance: ${instance}`)
-          const searxUrl = `${instance}/search?q=${encodeURIComponent(searchQuery)}&format=json&language=pt-BR`
-          const searxRes = await fetch(searxUrl, {
-            headers: { 
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Accept': 'application/json',
-            },
-            cache: 'no-store',
-          })
-          
-          if (searxRes.ok) {
-            const data = await searxRes.json()
-            if (data.results && data.results.length > 0) {
-              results = data.results.slice(0, 10).map((r: any) => ({
-                name: r.title || r.url?.replace(/^https?:\/\//, '').split('/')[0] || 'Desconhecido',
-                url: r.url || '',
-                snippet: r.content || ''
-              }))
-              console.log(`Found ${results.length} results from ${instance}`)
-              break
-            }
-          }
-        } catch (e) {
-          console.error(`SearXNG ${instance} failed:`, e)
-          continue
-        }
-      }
+      // Try without location modifier
+      const altQuery = `${query} ${niche !== 'todos' ? niche : ''} site:.com.br`
+      results = await searchDuckDuckGo(altQuery)
     }
 
-    // Fallback: Generate contextual results based on query
-    if (results.length === 0) {
-      console.warn('Search engines failed. Generating contextual results.')
-      const q = query.toLowerCase()
-      const loc = location || 'Brasil'
-      
-      // Generate realistic-looking results based on the search query
-      const templates = [
-        { name: `${query} ${loc} - Principal`, url: `https://${q.replace(/\s+/g, '')}${loc.toLowerCase().replace(/\s+/g, '')}.com.br`, snippet: `${query} especializado(a) em ${loc}. Atendimento de qualidade. Contato via WhatsApp e Instagram.` },
-        { name: `${query} Centro ${loc}`, url: `https://${q.replace(/\s+/g, '')}centro${loc.toLowerCase().replace(/\s+/g, '')}.com.br`, snippet: `Escritório central em ${loc}. ${query} com experiência. LinkedIn e site disponíveis.` },
-        { name: `${query} Zona Sul ${loc}`, url: `https://${q.replace(/\s+/g, '')}zonasul${loc.toLowerCase().replace(/\s+/g, '')}.com.br`, snippet: `Unidade Zona Sul de ${loc}. ${query} premium. Instagram: @${q.replace(/\s+/g, '')}${loc.toLowerCase().replace(/\s+/g, '')}` },
-        { name: `Melhor ${query} em ${loc}`, url: `https://melhor${q.replace(/\s+/g, '')}${loc.toLowerCase().replace(/\s+/g, '')}.com.br`, snippet: `Avaliações 5 estrelas. ${query} referência em ${loc}. WhatsApp: (21) 99999-0000` },
-        { name: `${query} 24h ${loc}`, url: `https://${q.replace(/\s+/g, '')}24h${loc.toLowerCase().replace(/\s+/g, '')}.com.br`, snippet: `Atendimento 24 horas em ${loc}. ${query} emergencial. Contato imediato.` },
-      ]
-      results = templates
-    }
+    // Enrich with social links
+    const enrichedResults = results.map(r => extractSocialLinks(r))
 
-    // Extract social media links from search results
-    const enrichedResults = results.map((r) => {
-      const url = r.url || ''
-      const snippet = r.snippet || ''
-      const allText = `${url} ${snippet}`.toLowerCase()
-
-      let instagram = ''
-      let linkedin = ''
-      let whatsapp = ''
-
-      // Extract Instagram
-      const igMatch = allText.match(/instagram\.com\/([a-zA-Z0-9_.]+)/)
-      if (igMatch) {
-        instagram = `https://instagram.com/${igMatch[1]}`
-      }
-
-      // Extract LinkedIn
-      const liMatch = allText.match(/linkedin\.com\/(in|company)\/([a-zA-Z0-9_.-]+)/)
-      if (liMatch) {
-        linkedin = `https://linkedin.com/${liMatch[1]}/${liMatch[2]}`
-      }
-
-      // Extract WhatsApp
-      const waMatch = allText.match(/wa\.me\/(\d+)|whatsapp.*?(\+?\d{10,})/)
-      if (waMatch) {
-        whatsapp = waMatch[1] ? `https://wa.me/${waMatch[1]}` : waMatch[2] || ''
-      }
-
-      return {
-        ...r,
-        instagram,
-        linkedin,
-        whatsapp,
-      }
-    })
-
-    // Save search to SearchHistory (optional - skip if DB unavailable)
+    // Save search history (optional)
     let searchId = null
     try {
       const searchHistory = await db.searchHistory.create({
@@ -184,13 +225,13 @@ export async function POST(request: NextRequest) {
           query,
           niche: niche || null,
           location: location || null,
-          leadType: effectiveLeadType,
+          leadType: leadType || 'pessoa_juridica',
           results: results.length,
         },
       })
       searchId = searchHistory.id
-    } catch (dbError) {
-      console.log('[Search] Could not save search history:', dbError)
+    } catch {
+      // DB might not be available
     }
 
     return NextResponse.json({
@@ -201,9 +242,9 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN')) {
       return authErrorResponse(error)
     }
-    console.error('Error searching for leads:', error)
+    console.error('Search error:', error)
     return NextResponse.json(
-      { error: 'Failed to search for leads' },
+      { error: 'Erro na busca. Tente novamente.' },
       { status: 500 }
     )
   }
